@@ -15,7 +15,8 @@ public enum RunGoal
 
 /// <param name="TeamOfThree">Register only the 3 best beasts: Beast Squad III (1-3 beasts) is worth 4,250 on every board.</param>
 /// <param name="Shop">Let AutoDuty buy from the board shop; any purchase forfeits Coin Clutcher (500).</param>
-public sealed record RunOptions(bool TeamOfThree, bool Shop, RunGoal Goal)
+/// <param name="CarryLeveling">Use AutoDuty's 3-carrier leveling team instead of the three-beast scoring team.</param>
+public sealed record RunOptions(bool TeamOfThree, bool Shop, RunGoal Goal, bool CarryLeveling = false)
 {
     public static readonly RunOptions Default = new(TeamOfThree: true, Shop: false, Goal: RunGoal.Clear);
 }
@@ -43,7 +44,14 @@ public static class AutoDutyOverrides
             ["DutyConfig.RotationPlugin"] = rotationPlugin,
             ["Meta.Crucible.Shop"] = Bool(options.Shop && !score),
         };
-        if (options.TeamOfThree)
+        if (options.CarryLeveling)
+        {
+            // AutoDuty picks its 3 highest-ranked beasts to carry, then the lowest-ranked
+            // available beasts for EXP. It targets the board's roster limit minus two.
+            o["Meta.Crucible.TeamMode"] = "Leveling";
+            o["Meta.Crucible.LevelingMode"] = "Carry_Minus_2";
+        }
+        else if (options.TeamOfThree)
         {
             // Recommended mode takes the highest-ranked owned beasts up to this cap.
             o["Meta.Crucible.TeamMode"] = "Recommended";

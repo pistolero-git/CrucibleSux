@@ -204,11 +204,11 @@ public sealed class MainWindow : Window
         var c = this.session.Snapshot;
         ImGui.Checkbox("Only beasts not befriended", ref this.missingOnly);
         ImGui.SameLine();
-        ImGui.TextDisabled("Ranks are read when you open a beast's page in the Master's Bestiary.");
+        ImGui.TextDisabled("Ranks/EXP update when you select a beast in the Bestiary or after a board result. Registered teams also provide ranks.");
         if (this.bestiary.LastRead is { } last)
             ImGui.TextDisabled($"Last read: {last}");
 
-        using var table = ImRaii.Table("##beasts", 6, ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.BordersInnerH);
+        using var table = ImRaii.Table("##beasts", 7, ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.BordersInnerH);
         if (!table)
             return;
         ImGui.TableSetupScrollFreeze(0, 1);
@@ -217,6 +217,7 @@ public sealed class MainWindow : Window
         ImGui.TableSetupColumn("Kin", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("Befriended", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("Rank", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("EXP", ImGuiTableColumnFlags.WidthStretch, 1f);
         ImGui.TableSetupColumn("Where", ImGuiTableColumnFlags.WidthStretch, 3f);
         ImGui.TableHeadersRow();
 
@@ -238,7 +239,12 @@ public sealed class MainWindow : Window
             if (c?.Beasts.GetValueOrDefault(beast.Id) is { Rank: int rank } seen)
                 ImGui.TextUnformatted(seen.RankIsEstimated ? $"{rank} (est.)" : rank.ToString());
             else
-                ImGui.TextDisabled(owned == true ? "not seen" : "-");
+                ImGui.TextDisabled(owned == true ? "not read" : "-");
+            ImGui.TableNextColumn();
+            if (c?.Beasts.GetValueOrDefault(beast.Id) is { Rank: not null, Exp: int exp })
+                ImGui.TextUnformatted($"{exp}/100");
+            else
+                ImGui.TextDisabled("-");
             ImGui.TableNextColumn();
             if (this.data.Locations.TryGetValue(beast.Id, out var where))
             {
@@ -375,13 +381,30 @@ public sealed class MainWindow : Window
 
         ImGui.Spacing();
         ImGui.TextUnformatted("Board runs");
-        bool three = this.config.RunTeamOfThree;
-        if (ImGui.Checkbox("Register only the 3 best beasts", ref three))
+        string[] teamChoices = ["Best 3 (score)", "Carry 3 + level others", "Use AutoDuty team settings"];
+        int teamSelection = this.config.RunCarryLeveling ? 1 : this.config.RunTeamOfThree ? 0 : 2;
+        ImGui.SetNextItemWidth(260f);
+        using (var combo = ImRaii.Combo("Team selection", teamChoices[teamSelection]))
         {
-            this.config.RunTeamOfThree = three;
-            this.save();
+            if (combo)
+            {
+                for (int i = 0; i < teamChoices.Length; i++)
+                {
+                    if (ImGui.Selectable(teamChoices[i], i == teamSelection))
+                    {
+                        this.config.RunTeamOfThree = i == 0;
+                        this.config.RunCarryLeveling = i == 1;
+                        this.save();
+                    }
+                }
+            }
         }
-        ImGui.TextDisabled("Beast Squad III (1-3 beasts) is the biggest score bonus on every board. Off: AutoDuty registers a full team, which clears more safely but scores less.");
+        if (teamSelection == 0)
+            ImGui.TextDisabled("Three high-ranked beasts for the Beast Squad III scoring bonus (4,250 points).");
+        else if (teamSelection == 1)
+            ImGui.TextDisabled("AutoDuty picks 3 high-ranked carriers and low-ranked beasts for EXP, up to the board's roster limit minus 2. Trades away Beast Squad III.");
+        else
+            ImGui.TextDisabled("Crucible SUX leaves team selection unchanged, using your existing AutoDuty settings.");
         bool shop = this.config.RunShop;
         if (ImGui.Checkbox("Let AutoDuty buy from the board shop", ref shop))
         {

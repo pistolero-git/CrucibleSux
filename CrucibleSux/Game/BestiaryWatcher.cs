@@ -5,21 +5,22 @@ using CrucibleSux.Core;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Plugin.Services;
-using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Text.ReadOnly;
 
 namespace CrucibleSux.Game;
 
 /// <summary>
-/// Reads a beast's page in the Master's Bestiary (XBMMonsterBookDetail) when the player opens it: the attributes give
-/// the rank (<see cref="RankEstimator"/>; the page shows no rank the client exposes) and the EXP line the EXP. What it
-/// reads is kept per character in the configuration, so ranks survive restarts. Unverified in game: the node texts'
-/// format and whether the page shows the attributes at the beast's current rank.
+/// Keeps the per-character beast rank cache current from the game's numeric rank/EXP fields.
+/// The Bestiary, party registration window and board result all expose real ranks; stat-based
+/// inference is deliberately not used. Unvisited and unregistered beasts remain unknown.
 /// </summary>
 public sealed class BestiaryWatcher : IDisposable
 {
     public const string AddonName = "XBMMonsterBookDetail";
+    private const string NotebookName = "XBMMonsterNotebook";
+    private const string PartyName = "XBMPetParty";
+    private const string ResultName = "XBMResult";
 
     private readonly IAddonLifecycle lifecycle;
     private readonly IPlayerState player;
@@ -27,98 +28,210 @@ public sealed class BestiaryWatcher : IDisposable
     private readonly Configuration config;
     private readonly Action save;
     private readonly Dictionary<string, BeastInfo> byName;
-    private string lastPage = string.Empty;
+    private readonly Dictionary<uint, BeastInfo> byId;
     private bool warned;
 
-    /// <summary>The last page read, for the Beasts tab's "last seen" line.</summary>
     public string? LastRead { get; private set; }
 
-    public BestiaryWatcher(IAddonLifecycle lifecycle, IPlayerState player, IPluginLog log, Configuration config, Action save, IEnumerable<BeastInfo> beasts)
+    public BestiaryWatcher(IAddonLifecycle lifecycle, IPlayerState player, IPluginLog log,
+        Configuration config, Action save, IEnumerable<BeastInfo> beasts)
     {
         this.lifecycle = lifecycle;
         this.player = player;
         this.log = log;
         this.config = config;
         this.save = save;
-        this.byName = beasts.GroupBy(b => b.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-        lifecycle.RegisterListener(AddonEvent.PostUpdate, AddonName, this.OnUpdate);
+        var known = beasts.ToList();
+        this.byName = known.GroupBy(b => b.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        this.byId = known.ToDictionary(b => b.Id);
+        lifecycle.RegisterListener(AddonEvent.PostUpdate, AddonName, this.OnDetail);
+        lifecycle.RegisterListener(AddonEvent.PostUpdate, NotebookName, this.OnNotebook);
+        lifecycle.RegisterListener(AddonEvent.PostUpdate, PartyName, this.OnParty);
+        lifecycle.RegisterListener(AddonEvent.PostUpdate, ResultName, this.OnResult);
     }
 
-    public void Dispose() => this.lifecycle.UnregisterListener(AddonEvent.PostUpdate, AddonName, this.OnUpdate);
+    public void Dispose()
+    {
+        this.lifecycle.UnregisterListener(AddonEvent.PostUpdate, AddonName, this.OnDetail);
+        this.lifecycle.UnregisterListener(AddonEvent.PostUpdate, NotebookName, this.OnNotebook);
+        this.lifecycle.UnregisterListener(AddonEvent.PostUpdate, PartyName, this.OnParty);
+        this.lifecycle.UnregisterListener(AddonEvent.PostUpdate, ResultName, this.OnResult);
+    }
 
-    private unsafe void OnUpdate(AddonEvent type, AddonArgs args)
+    private unsafe void OnNotebook(AddonEvent _, AddonArgs args)
     {
         try
         {
-            var addon = (AddonXBMMonsterBookDetail*)args.Addon.Address;
-            if (addon == null || !addon->AtkUnitBase.IsVisible)
+            var addon = (AtkUnitBase*)args.Addon.Address;
+            // Indices match the XBMMonsterNotebook game's AtkValue layout.
+            if (!Ready(addon) || !Bool(addon, 255))
                 return;
-
-            string name = Text(addon->EntryName);
-            int?[] stats =
-            [
-                Number(Text(addon->EntryStrengthCount)), Number(Text(addon->EntryIngelligenceCount)),
-                Number(Text(addon->EntryPhysicalResistanceCount)), Number(Text(addon->EntryMagicalResistanceCount)),
-                Number(Text(addon->EntryConstitutionCount)),
-            ];
-            string expText = Text(addon->EntryExpCount);
-            string page = $"{name}|{string.Join(',', stats)}|{expText}";
-            if (page == this.lastPage)
-                return;
-            this.lastPage = page;
-
-            if (!this.byName.TryGetValue(name.Trim(), out var beast) || stats.Any(s => s is null) || this.player.ContentId == 0)
-                return;
-
-            var shown = new BeastStats(stats[0]!.Value, stats[1]!.Value, stats[2]!.Value, stats[3]!.Value, stats[4]!.Value);
-            this.Record(beast, RankEstimator.FromStats(beast, shown), Number(expText));
+            uint id = UInt(addon, 5) ?? 0;
+            int? rank = Number(ValueText(addon, 258));
+            int? exp = AsInt(UInt(addon, 261));
+            if (this.Record(id, rank, exp, "Bestiary"))
+                this.save();
         }
-        catch (Exception ex)
-        {
-            if (!this.warned)
-            {
-                this.warned = true;
-                this.log.Warning(ex, "The Bestiary page could not be read; beast ranks stay as last seen");
-            }
-        }
+        catch (Exception ex) { this.Warn(ex); }
     }
 
-    private void Record(BeastInfo beast, int? rank, int? exp)
+    private unsafe void OnDetail(AddonEvent _, AddonArgs args)
     {
-        if (!this.config.Characters.TryGetValue(this.player.ContentId, out var beasts))
-            this.config.Characters[this.player.ContentId] = beasts = [];
-
-        var saved = beasts.GetValueOrDefault(beast.Id);
-        // An unreadable rank keeps the last one seen rather than forgetting it.
-        int? newRank = rank ?? saved?.Rank;
-        if (saved is not null && saved.Rank == newRank && saved.Exp == exp)
-            return;
-
-        beasts[beast.Id] = new SavedBeast { Rank = newRank, Exp = exp, RankIsEstimated = true, SeenUtc = DateTime.UtcNow };
-        this.LastRead = rank is null ? $"{beast.Name}: rank not recognised" : $"{beast.Name}: rank {rank}";
-        this.save();
+        try
+        {
+            var addon = (AtkUnitBase*)args.Addon.Address;
+            if (!Ready(addon))
+                return;
+            var uld = &addon->UldManager;
+            // The detail page has actual rank at text node 40 and EXP at 42.
+            // Node 12 is the beast number; the name is a fallback when it is absent.
+            uint id = (uint)(Number(NodeText(uld, 12)) ?? 0);
+            if (id == 0 && this.byName.TryGetValue(NodeText(uld, 13).Trim(), out var beast))
+                id = beast.Id;
+            int? rank = Number(NodeText(uld, 40));
+            int? exp = Number(NodeText(uld, 42));
+            if (this.Record(id, rank, exp, "Bestiary detail"))
+                this.save();
+        }
+        catch (Exception ex) { this.Warn(ex); }
     }
 
-    private static unsafe string Text(AtkTextNode* node) =>
-        node == null ? string.Empty : new ReadOnlySeStringSpan(node->NodeText.AsSpan()).ExtractText();
+    private unsafe void OnParty(AddonEvent _, AddonArgs args)
+    {
+        try
+        {
+            var addon = (AtkUnitBase*)args.Addon.Address;
+            if (!Ready(addon) || UInt(addon, 5) is not uint count || count > 15)
+                return;
+            bool changed = false;
+            for (int i = 0; i < (int)count; i++)
+            {
+                int entry = 6 + i * 77;
+                uint id = UInt(addon, entry + 76) ?? 0;
+                int? rank = Number(ValueText(addon, entry));
+                // The party row does not give EXP. Retain the last observed value.
+                changed |= this.Record(id, rank, null, "Registered team", authoritative: false);
+            }
+            if (changed)
+                this.save();
+        }
+        catch (Exception ex) { this.Warn(ex); }
+    }
 
-    /// <summary>The first whole number in a text ("1,234/2,000" reads 1234), or null when it has none.</summary>
+    private unsafe void OnResult(AddonEvent _, AddonArgs args)
+    {
+        try
+        {
+            var addon = (AtkUnitBase*)args.Addon.Address;
+            if (!Ready(addon) || UInt(addon, 72) is not uint count || count > 15)
+                return;
+            bool changed = false;
+            for (int i = 0; i < (int)count; i++)
+            {
+                // Result entries are staggered: beast icon at 73+i, rank at +4*16, EXP at +2*16.
+                int entry = 73 + i;
+                uint icon = UInt(addon, entry) ?? 0;
+                if (icon < 242001 || icon > 242000 + CrucibleIds.TotalBeasts)
+                    continue;
+                uint id = icon - 242000;
+                int? rank = AsInt(UInt(addon, entry + 64));
+                int? exp = AsInt(UInt(addon, entry + 32));
+                changed |= this.Record(id, rank, exp, "Board result");
+            }
+            if (changed)
+                this.save();
+        }
+        catch (Exception ex) { this.Warn(ex); }
+    }
+
+    /// <summary>Save only real, valid rank values. Never replace a newer rank with a synced/older one.</summary>
+    private bool Record(uint id, int? rank, int? exp, string source, bool authoritative = true)
+    {
+        if (this.player.ContentId == 0 || !this.byId.TryGetValue(id, out var beast))
+            return false;
+        if (!this.config.Characters.TryGetValue(this.player.ContentId, out var saved))
+            this.config.Characters[this.player.ContentId] = saved = [];
+        var previous = saved.GetValueOrDefault(id);
+        BeastProgress? old = previous is null ? null : new BeastProgress(id, previous.Rank, previous.Exp,
+            previous.RankIsEstimated, previous.SeenUtc);
+        var updated = BeastRankUpdates.Merge(id, rank, exp, old, DateTime.UtcNow, authoritative);
+        if (updated is null)
+            return false;
+        saved[id] = new SavedBeast
+        {
+            Rank = updated.Rank,
+            Exp = updated.Exp,
+            RankIsEstimated = false,
+            SeenUtc = updated.SeenUtc,
+        };
+        this.LastRead = $"{beast.Name}: rank {updated.Rank}, EXP {(updated.Exp?.ToString() ?? "?")} ({source})";
+        return true;
+    }
+
+    private static unsafe bool Ready(AtkUnitBase* addon) =>
+        addon != null && addon->IsVisible && addon->AtkValues != null;
+
+    private static unsafe uint? UInt(AtkUnitBase* addon, int index)
+    {
+        if (!Ready(addon) || index < 0 || index >= addon->AtkValuesCount)
+            return null;
+        var value = addon->AtkValues[index];
+        return (value.Type & AtkValueType.TypeMask) switch
+        {
+            AtkValueType.UInt => value.UInt,
+            AtkValueType.Int when value.Int >= 0 => (uint)value.Int,
+            _ => null,
+        };
+    }
+
+    private static unsafe bool Bool(AtkUnitBase* addon, int index) =>
+        Ready(addon) && index >= 0 && index < addon->AtkValuesCount
+        && (addon->AtkValues[index].Type & AtkValueType.TypeMask) == AtkValueType.Bool
+        && addon->AtkValues[index].Bool;
+
+    private static unsafe string ValueText(AtkUnitBase* addon, int index)
+    {
+        if (!Ready(addon) || index < 0 || index >= addon->AtkValuesCount)
+            return string.Empty;
+        var value = addon->AtkValues[index];
+        var type = value.Type & AtkValueType.TypeMask;
+        return type is AtkValueType.String or AtkValueType.ConstString ? value.GetValueAsString() : string.Empty;
+    }
+
+    private static unsafe string NodeText(AtkUldManager* uld, uint id)
+    {
+        var node = uld->SearchNodeById(id);
+        var textNode = node == null ? null : node->GetAsAtkTextNode();
+        return textNode == null ? string.Empty : new ReadOnlySeStringSpan(textNode->NodeText.AsSpan()).ExtractText();
+    }
+
+    private static int? AsInt(uint? value) => value <= int.MaxValue ? (int?)value : null;
+
     private static int? Number(string text)
     {
         int value = 0;
-        bool any = false;
+        bool started = false;
         foreach (char c in text)
         {
             if (char.IsAsciiDigit(c))
             {
-                value = checked(value * 10 + (c - '0'));
-                any = true;
+                if (value > (int.MaxValue - (c - '0')) / 10)
+                    return null;
+                value = value * 10 + (c - '0');
+                started = true;
             }
-            else if (any && c is not (',' or '.' or ' '))
-            {
+            else if (started && c != ',')
                 break;
-            }
         }
-        return any ? value : null;
+        return started ? value : null;
+    }
+
+    private void Warn(Exception ex)
+    {
+        if (this.warned)
+            return;
+        this.warned = true;
+        this.log.Warning(ex, "Could not read current beast ranks from the Crucible UI; cached ranks are retained");
     }
 }

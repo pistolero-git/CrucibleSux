@@ -46,8 +46,11 @@ public sealed class Configuration : IPluginConfiguration
 
     public const int HistoryCap = 500;
 
-    /// <summary>Board runs register only the 3 best beasts (Beast Squad III) instead of AutoDuty's full team.</summary>
+    /// <summary>Legacy choice for the three-beast scoring roster; false leaves team selection to AutoDuty.</summary>
     public bool RunTeamOfThree { get; set; } = RunOptions.Default.TeamOfThree;
+
+    /// <summary>Register three strong carriers and lower-ranked beasts for EXP. Overrides RunTeamOfThree when on.</summary>
+    public bool RunCarryLeveling { get; set; }
 
     /// <summary>Board runs may buy from the board shop (forfeits Coin Clutcher).</summary>
     public bool RunShop { get; set; } = RunOptions.Default.Shop;
@@ -86,7 +89,7 @@ public sealed class Configuration : IPluginConfiguration
     /// </summary>
     public int BossModTurnedOffInProcess { get; set; }
 
-    public RunOptions BoardRunOptions() => new(this.RunTeamOfThree, this.RunShop, this.RunGoal);
+    public RunOptions BoardRunOptions() => new(this.RunTeamOfThree, this.RunShop, this.RunGoal, this.RunCarryLeveling);
 }
 
 [Serializable]
