@@ -83,7 +83,7 @@ public sealed class MainWindow : Window
         float railWidth = available < 940f ? 184f : 210f;
         ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 12f);
         ImGui.PushStyleColor(ImGuiCol.ChildBg, RailBackground);
-        bool rail = ImGui.BeginChild("##CrucibleRail", new Vector2(railWidth, 0f), ImGuiChildFlags.Borders);
+        bool rail = ImGui.BeginChild("##CrucibleRail", new Vector2(railWidth, 0f), true);
         if (rail)
             this.DrawRail();
         ImGui.EndChild();
@@ -91,7 +91,7 @@ public sealed class MainWindow : Window
 
         ImGui.SameLine(0f, 12f);
         ImGui.PushStyleColor(ImGuiCol.ChildBg, BodyBackground);
-        bool content = ImGui.BeginChild("##CrucibleContent", Vector2.Zero, ImGuiChildFlags.Borders);
+        bool content = ImGui.BeginChild("##CrucibleContent", Vector2.Zero, true);
         if (content)
             this.DrawContent();
         ImGui.EndChild();

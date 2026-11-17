@@ -2,6 +2,17 @@
 
 The upstream project's earlier release history remains in `CHANGELOG.md`. The fork tracks its own version numbers here.
 
+## [0.3.28] - 2026-11-16
+
+### Fixed
+
+- Fixed v0.3.27 GitHub Actions compile failure CS0103 in `CrucibleSux/Ui/MainWindow.cs` lines 86 and 94: replaced unsupported `ImGuiChildFlags.Borders` argument with the `bool border` argument supported by the currently bundled `Dalamud.Bindings.ImGui` API.
+- Preserved the original v0.3.27 two-pane sidebar and dashboard redesign without changing any combat automation.
+
+### Note
+
+- v0.3.27 was not published because its build failed; v0.3.28 is the corrective release. Does not address the Rotation Solver Reborn start-of-board handoff issue.
+
 ## [0.3.27] - 2026-11-16
 
 ### Changed

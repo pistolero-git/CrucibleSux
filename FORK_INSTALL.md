@@ -1,6 +1,6 @@
-# Crucible SUX Leveler v0.3.27 — original dashboard UI
+# Crucible SUX Leveler v0.3.28 — original dashboard UI
 
-This ZIP contains **complete replacement source files**, not patches. It is designed to overlay the **v0.3.26** source in `pistolero-git/CrucibleSux` and preserves existing plugin behavior.
+This corrective ZIP contains **complete replacement source files**, not patches. It fixes GitHub Actions `CS0103` caused by the new UI using the wrong `ImGui.BeginChild` overload. It is designed to overlay the **v0.3.27** source in `pistolero-git/CrucibleSux` and preserves existing plugin behavior.
 
 ## Changes
 
@@ -16,13 +16,13 @@ This ZIP contains **complete replacement source files**, not patches. It is desi
 ```bash
 cd ~/Documents/git/CrucibleSux
 git pull --rebase origin main
-unzip -o ~/Downloads/CrucibleSux_Leveler_v0.3.27_UI_DropIn.zip
+unzip -o ~/Downloads/CrucibleSux_Leveler_v0.3.28_UI_DropIn.zip
 dotnet build CrucibleSux/CrucibleSux.csproj -c Release
 dotnet test --project CrucibleSux.Tests -c Release
 git diff --check
 git status
 ```
 
-Commit and push when the build and tests pass. Create and push the tag `v0.3.27` only after verifying the UI in Dalamud. Release Actions will update `pluginmaster.json` after publishing a package.
+Commit and push when the build and tests pass. Create and push the tag `v0.3.28` only after verifying the UI in Dalamud. Release Actions will update `pluginmaster.json` after publishing a package.
 
 **Not included**: a fix for the AutoDuty boss-encounter standstill. The earlier boss issue remains separate from this UI redesign.
