@@ -2,6 +2,16 @@
 
 The upstream project's earlier release history remains in `CHANGELOG.md`. The fork tracks its own version numbers here.
 
+## [0.3.31] - 2026-11-16
+
+### Fixed
+
+- Rebuilt sidebar navigation as full-width, explicitly sized ImGui buttons with genuine click hitboxes; removed the previous negative-width Selectable implementation.
+- Replaced the default window title bar with a custom draggable branded header, explicit Close control, and compact/expand mode.
+- Added native FFXIV body, headline, section and small-caps fonts through Dalamud's font atlas, with proper disposal on unload. No external font files or Glasswork dependency.
+- Reworked the dashboard into a prominent readiness hero, separate metric cards and quick actions. Organized settings with clear section headings and consistent control styling.
+- Preserved the v0.3.30 RSR board recovery and all existing plugin automation, configuration and data pages.
+
 ## [0.3.30] - 2026-11-16
 
 ### Fixed

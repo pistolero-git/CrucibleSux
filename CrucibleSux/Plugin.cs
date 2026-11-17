@@ -126,6 +126,7 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.RemoveHandler(LongCommand);
         CommandManager.RemoveHandler(Command);
         this.windowSystem.RemoveAllWindows();
+        this.mainWindow.Dispose();
         this.journey.Dispose();
         this.runner.Dispose();
         this.bossMod.Dispose();
