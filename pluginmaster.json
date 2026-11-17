@@ -24,10 +24,10 @@
     "DownloadLinkInstall": "https://github.com/pistolero-git/CrucibleSux/releases/download/v0.3.25/latest.zip",
     "DownloadLinkTesting": "https://github.com/pistolero-git/CrucibleSux/releases/download/v0.3.25/latest.zip",
     "DownloadLinkUpdate": "https://github.com/pistolero-git/CrucibleSux/releases/download/v0.3.25/latest.zip",
-    "LastUpdate": 1794877200,
+    "Changelog": "### Added\n\n- Separate Dalamud plugin identity (`CrucibleSuxLeveler`) and commands (`/suxl`, `/cruciblesuxleveler`) so it can be distinguished from upstream Crucible SUX.\n- Carry-leveling roster selection through AutoDuty's `Leveling` / `Carry_Minus_2` mode, with tests.\n- Direct beast-rank and EXP observations from Bestiary, registered teams, and board results, with rank-merging tests and an EXP column.\n\n### Changed\n\n- Fork repository URL, name, icon URL, and published package metadata now point to `pistolero-git/CrucibleSux`.\n- Versioned releases use the project assembly version and matching `vX.Y.Z` Git tag, with validation before publication.\n- Release packaging and checksum generation use `CrucibleSuxLeveler.dll` and its matching JSON manifest.\n\n### Known limitations\n\n- In-game UI offsets, rank/EXP observations, and AutoDuty leveling behavior require live validation.\n- Release builds require the Dalamud development files and .NET 10 SDK.",
+    "LastUpdate": 1794878798,
     "DownloadCount": 0,
-    "IsHide": true,
-    "IsTestingExclusive": false,
-    "Changelog": "Unreleased fork update. This entry becomes visible after v0.3.25 is published."
+    "IsHide": false,
+    "IsTestingExclusive": false
   }
 ]
