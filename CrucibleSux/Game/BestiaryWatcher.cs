@@ -15,7 +15,7 @@ namespace CrucibleSux.Game;
 /// The Bestiary, party registration window and board result all expose real ranks; stat-based
 /// inference is deliberately not used. Unvisited and unregistered beasts remain unknown.
 /// </summary>
-public sealed class BestiaryWatcher : IDisposable
+public sealed partial class BestiaryWatcher : IDisposable
 {
     public const string AddonName = "XBMMonsterBookDetail";
     private const string NotebookName = "XBMMonsterNotebook";
@@ -64,14 +64,18 @@ public sealed class BestiaryWatcher : IDisposable
         try
         {
             var addon = (AtkUnitBase*)args.Addon.Address;
-            // Indices match the XBMMonsterNotebook game's AtkValue layout.
-            if (!Ready(addon) || !Bool(addon, 255))
+            if (!Ready(addon))
                 return;
-            uint id = UInt(addon, 5) ?? 0;
-            int? rank = Number(ValueText(addon, 258));
-            int? exp = AsInt(UInt(addon, 261));
-            if (this.Record(id, rank, exp, "Bestiary"))
-                this.save();
+            // Passive observation also picks up every beast AutoDuty selects when it scans.
+            if (Bool(addon, 255))
+            {
+                uint id = UInt(addon, 5) ?? 0;
+                int? rank = Number(ValueText(addon, 258));
+                int? exp = AsInt(UInt(addon, 261));
+                if (this.Record(id, rank, exp, "Bestiary"))
+                    this.save();
+            }
+            this.TickBestiaryScan(addon);
         }
         catch (Exception ex) { this.Warn(ex); }
     }
@@ -105,14 +109,23 @@ public sealed class BestiaryWatcher : IDisposable
             if (!Ready(addon) || UInt(addon, 5) is not uint count || count > 15)
                 return;
             bool changed = false;
+            var team = new List<DungeonBeast>();
             for (int i = 0; i < (int)count; i++)
             {
                 int entry = 6 + i * 77;
                 uint id = UInt(addon, entry + 76) ?? 0;
                 int? rank = Number(ValueText(addon, entry));
+                if (this.byId.ContainsKey(id))
+                {
+                    uint horn = UInt(addon, entry + 74) ?? 3;
+                    team.Add(new DungeonBeast(id, rank,
+                        UInt(addon, entry + 5) ?? 0, UInt(addon, entry + 6) ?? 0,
+                        horn <= 2 ? (int)horn + 1 : null, Bool(addon, entry + 2)));
+                }
                 // The party row does not give EXP. Retain the last observed value.
                 changed |= this.Record(id, rank, null, "Registered team", authoritative: false);
             }
+            this.RememberRoster(team);
             if (changed)
                 this.save();
         }
@@ -138,6 +151,7 @@ public sealed class BestiaryWatcher : IDisposable
                 int? rank = AsInt(UInt(addon, entry + 64));
                 int? exp = AsInt(UInt(addon, entry + 32));
                 changed |= this.Record(id, rank, exp, "Board result");
+                this.RememberResultRank(id, rank);
             }
             if (changed)
                 this.save();

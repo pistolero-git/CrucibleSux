@@ -52,6 +52,9 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>Register three strong carriers and lower-ranked beasts for EXP. Overrides RunTeamOfThree when on.</summary>
     public bool RunCarryLeveling { get; set; }
 
+    /// <summary>Automatically read each owned beast's rank when the Bestiary is opened outside a board.</summary>
+    public bool AutoScanBeasts { get; set; } = true;
+
     /// <summary>Board runs may buy from the board shop (forfeits Coin Clutcher).</summary>
     public bool RunShop { get; set; } = RunOptions.Default.Shop;
 

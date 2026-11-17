@@ -63,6 +63,7 @@ public sealed class MainWindow : Window
         Tab("History", this.sessionTabs.DrawHistory);
         Tab("Journey", this.journeyTab.Draw);
         Tab("Beasts", this.DrawBeasts);
+        Tab("Dungeon roster", this.DrawDungeonRoster);
         Tab("Teams", this.DrawTeams);
         Tab("Plugins", this.DrawPlugins);
         Tab("Log", this.logTab.Draw);
@@ -207,6 +208,21 @@ public sealed class MainWindow : Window
         ImGui.TextDisabled("Ranks/EXP update when you select a beast in the Bestiary or after a board result. Registered teams also provide ranks.");
         if (this.bestiary.LastRead is { } last)
             ImGui.TextDisabled($"Last read: {last}");
+        if (c?.UnlockedBeasts is { } unlocked)
+        {
+            int verified = unlocked.Count(id => c.Beasts.GetValueOrDefault(id) is { Rank: > 0, RankIsEstimated: false });
+            ImGui.TextUnformatted($"Verified ranks: {verified}/{unlocked.Count} owned beasts.");
+        }
+        if (ImGui.Button("Refresh all owned beast ranks before board"))
+            this.bestiary.RequestFullScan();
+        if (this.bestiary.IsScanning)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel scan"))
+                this.bestiary.CancelScan();
+        }
+        ImGui.TextWrapped(this.bestiary.ScanStatus);
+        ImGui.TextDisabled("Open the Master's Bestiary outside a board to scan every owned beast. Rank is not available for unowned beasts.");
 
         using var table = ImRaii.Table("##beasts", 7, ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.BordersInnerH);
         if (!table)
@@ -256,6 +272,56 @@ public sealed class MainWindow : Window
                 if (ImGui.IsItemHovered() && this.data.Descriptions.TryGetValue(beast.Id, out var text))
                     ImGui.SetTooltip(text);
             }
+        }
+    }
+
+    private void DrawDungeonRoster()
+    {
+        var team = this.bestiary.CurrentRoster;
+        bool inBoard = Boards.ByTerritory(Plugin.ClientState.TerritoryType) is not null;
+        ImGui.TextUnformatted(inBoard ? "Registered beasts for this dungeon" : "Last observed Crucible registration");
+        ImGui.TextDisabled("Captured from the game's XBMPetParty screen. Values update while that screen is visible; the roster is retained after entry.");
+        if (this.bestiary.RosterUpdatedUtc is { } when)
+            ImGui.TextDisabled($"Last roster observation: {when.ToLocalTime():g}");
+        if (team.Count == 0)
+        {
+            ImGui.TextDisabled("No registered roster recorded. Open the Crucible team registration screen before entering.");
+            return;
+        }
+        ImGui.TextUnformatted($"{team.Count} beast(s) registered; Battlehorn assignment comes from the game.");
+        using var table = ImRaii.Table("##dungeonroster", 7,
+            ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.BordersInnerH);
+        if (!table)
+            return;
+        ImGui.TableSetupScrollFreeze(0, 1);
+        ImGui.TableSetupColumn("#", ImGuiTableColumnFlags.WidthFixed, 30f);
+        ImGui.TableSetupColumn("Beast", ImGuiTableColumnFlags.WidthStretch, 2f);
+        ImGui.TableSetupColumn("Rank", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("EXP", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("HP last seen", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("Battlehorn", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableHeadersRow();
+        foreach (var beast in team)
+        {
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(beast.Number.ToString());
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(this.data.Beasts.FirstOrDefault(b => b.Id == beast.Number)?.Name ?? $"Beast {beast.Number}");
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(beast.Rank?.ToString() ?? "?");
+            ImGui.TableNextColumn();
+            if (this.session.Snapshot?.Beasts.GetValueOrDefault(beast.Number)?.Exp is int exp)
+                ImGui.TextUnformatted($"{exp}/100");
+            else
+                ImGui.TextDisabled("-");
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(beast.MaxHp > 0 ? $"{beast.Hp}/{beast.MaxHp}" : "unknown");
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(beast.Battlehorn is int horn ? $"Horn {horn}" : "Unassigned");
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(beast.Disabled ? "Unavailable" : beast.MaxHp > 0 && beast.Hp == 0 ? "KO (last seen)" : "Registered");
         }
     }
 
@@ -482,6 +548,13 @@ public sealed class MainWindow : Window
 
         ImGui.Spacing();
         ImGui.TextUnformatted("Saved beast ranks");
+        bool autoScan = this.config.AutoScanBeasts;
+        if (ImGui.Checkbox("Automatically scan ranks when the Bestiary opens outside a board", ref autoScan))
+        {
+            this.config.AutoScanBeasts = autoScan;
+            this.save();
+        }
+        ImGui.TextDisabled("Pauses when AutoDuty is controlling the Bestiary; never clicks while AutoDuty is running.");
         int characters = this.config.Characters.Count;
         ImGui.TextDisabled($"Ranks read from the Bestiary are kept for {characters} character(s).");
         if (ImGui.Button("Forget all saved ranks") && ImGui.GetIO().KeyCtrl)

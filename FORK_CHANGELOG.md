@@ -2,6 +2,24 @@
 
 The upstream project's earlier release history remains in `CHANGELOG.md`. The fork tracks its own version numbers here.
 
+## [0.3.26] - 2026-11-16
+
+### Fixed
+
+- Combat handoff for open-world leveling: when vnavmesh reaches melee range with no valid current target, select an adjacent hostile before asking Rotation Solver Reborn to enter Manual mode. Preserve explicitly chosen quest and capture targets.
+- Report failures to select a target in the plugin log instead of assuming that an RSR mode change began combat.
+
+### Added
+
+- A full pre-entry read of **all owned** beast ranks and EXP: when the Master's Bestiary opens outside a Crucible board, the plugin can visit each owned entry, including entries on other pages. It reads the game's real rank and EXP values instead of estimating them. The Beasts tab shows scan progress, lets you refresh or cancel, and Settings allows disabling automatic scanning.
+- A new **Dungeon roster** tab showing the registered beasts, their observed ranks, saved EXP, last-seen HP, and Battlehorn assignment. The roster is captured from the game's registration window and retained after entry, then ranks are updated from results.
+
+### Limitations
+
+- Unowned beasts do not have a rank to read. The Bestiary must be opened before entry; a run will not open it automatically on behalf of the player. Scanning pauses while AutoDuty controls the same window.
+- The registered roster is a snapshot; HP shown after the registration window closes is the last observed value, not continuous live dungeon HP.
+- Changes require in-game testing against the current game's Bestiary layout and RSR behavior.
+
 ## [0.3.25] - 2026-11-16
 
 ### Added

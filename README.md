@@ -1,11 +1,20 @@
 # Crucible SUX Leveler
 
+## Fork v0.3.26 features
+
+- **Pre-entry beast rank scan:** open the Master's Bestiary before entering a board. The plugin iterates every **owned** beast and captures its real rank and EXP; the Beasts tab displays progress and offers a refresh. It does not read unowned beasts, and pauses while AutoDuty controls the Bestiary.
+- **Dungeon roster tab:** displays the registered beasts from the game's Crucible team screen with ranks, last-seen HP, EXP and Battlehorn assignments. The snapshot remains visible after entry and is not continuous live HP telemetry.
+- **Engagement guard:** while the Beastmaster journey levels in the open world, an eligible adjacent mob is targeted before requesting RSR Manual mode. A failed handoff is reported after 10 seconds.
+
+Version policy: `<Version>0.3.26.0</Version>` in `CrucibleSux/CrucibleSux.csproj` matches the release tag `v0.3.26`; see `FORK_CHANGELOG.md`. The live plugin repository manifest continues to advertise the last published release until the new release is uploaded.
+
+
 A maintained fork of [Crucible SUX](https://github.com/xenofei/CrucibleSux) by Michiru Tsukikage, with beast carry-leveling and improved rank/EXP tracking. This repository and its releases are hosted at **https://github.com/pistolero-git/CrucibleSux**.
 
 **Plugin:** Crucible SUX Leveler  
 **Internal name / DLL:** `CrucibleSuxLeveler` / `CrucibleSuxLeveler.dll`  
 **Command:** `/suxl` (alias `/cruciblesuxleveler`)  
-**Version source of truth:** `CrucibleSux/CrucibleSux.csproj` (`0.3.25.0` for the initial fork release)
+**Version source of truth:** `CrucibleSux/CrucibleSux.csproj` (`0.3.26.0` for this update)
 
 The plugin automates boards in FFXIV's Crucible of the Unbroken through AutoDuty and tracks Beastmaster progress. **Unattended automation violates the game's terms of service. Use it at your own risk.** The session queue and journey are experimental; do not assume they are safe or fully tested.
 

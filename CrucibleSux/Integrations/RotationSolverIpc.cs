@@ -1,4 +1,7 @@
 using System;
+using System.Linq;
+using CrucibleSux.Automation;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Services;
@@ -6,31 +9,21 @@ using Dalamud.Plugin.Services;
 namespace CrucibleSux.Integrations;
 
 /// <summary>
-/// Rotation Solver Reborn's IPC (RotationSolver/IPC/IPCProvider.cs, commit 3d86903): switches its auto-rotation on and
-/// off around fights the progression runner starts. Its own Beastmaster rotation does the fighting.
+/// Rotation Solver Reborn's IPC: turns its rotation on around fights the journey starts.
+/// Manual mode requires a target BEFORE the mode change; a mob approached by vnavmesh
+/// otherwise leaves RSR on with nothing to attack.
 /// </summary>
-/// <param name="note">Writes a line into the combat log (true: a warning): each mode sent, so a log shows what RSR was asked to do.</param>
 public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log, Action<string, bool> note)
 {
-    /// <summary>How long RSR may report itself off after being asked to fight before the mode is sent again.</summary>
     private static readonly TimeSpan ResendAfter = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan CheckEvery = TimeSpan.FromSeconds(1);
-
-    /// <summary>A call that failed is not tried again sooner than this, so a broken RSR does not fill the log.</summary>
     private static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(5);
-
-    /// <summary>Resends after the first in this window are counted, not each written to the log.</summary>
     private static readonly TimeSpan ResendNoteEvery = TimeSpan.FromSeconds(30);
 
-    /// <summary>RSR's <c>StateCommandType</c> (RotationSolver.Basic/Data/RSCommandType.cs); sent by value over IPC.</summary>
     public enum Mode : byte
     {
         Off = 0,
-
-        /// <summary>Picks its own targets.</summary>
         Auto = 1,
-
-        /// <summary>Attacks only the current target.</summary>
         Manual = 3,
     }
 
@@ -45,25 +38,39 @@ public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log
     private DateTime resendNotedAt;
     private int resendsUnnoted;
     private Mode? current;
-
-    /// <summary>The target override last sent; null when unknown, so the next <see cref="Set"/> sends it.</summary>
     private bool? freely;
+    private bool targetWarned;
+    private ulong manualSelectedTarget;
+    private DateTime manualSelectedSince;
+    private bool manualStallWarned;
+    private GameActions? manualActions;
 
-    /// <summary>The mode last asked for, whether or not RSR still holds it; for the combat log.</summary>
     public Mode? Requested { get; private set; }
 
-    /// <summary>Sets the mode; repeated calls with the same mode are not resent (see <see cref="Reassert"/>).</summary>
     public bool Set(Mode mode, bool targetFreely = false)
     {
         var now = DateTime.UtcNow;
         this.Requested = mode;
         if (now < this.failedUntil)
             return false;
+
+        // The existing leveling path reaches the mob before assigning a target. In Manual mode,
+        // RSR will not choose a target itself. Choose a hostile ALREADY in melee range before IPC.
+        // Capture, quest and defensive fighting paths already target explicitly, so preserve those.
+        if (mode == Mode.Manual)
+        {
+            this.EnsureManualTarget();
+            this.WatchManualEngagement(now);
+        }
+        else
+        {
+            this.manualSelectedTarget = 0;
+            this.manualStallWarned = false;
+        }
+
         bool failed = false;
         try
         {
-            // RSR turns itself off on its own (between areas, after combat, on a class change): a fighting mode it does not
-            // hold any more is sent again.
             if (this.current == mode && mode != Mode.Off && now - this.sentAt > ResendAfter && now >= this.nextCheck)
             {
                 this.nextCheck = now + CheckEvery;
@@ -74,7 +81,6 @@ public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log
                     this.freely = null;
                 }
             }
-            // The mode first: an RSR build without the override still gets switched on.
             if (this.current != mode)
             {
                 this.changeMode.InvokeAction(mode);
@@ -100,7 +106,6 @@ public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log
         }
         catch (Exception ex)
         {
-            // An RSR without the override: noted once, and the mode calls go on.
             this.Failed(now, "the target override", ex);
             this.freely = targetFreely;
             failed = true;
@@ -110,10 +115,61 @@ public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log
         return true;
     }
 
-    /// <summary>
-    /// Turns the rotation off and drops the target override whatever this class last sent: the player or another plugin
-    /// (AutoDuty during a board) may have changed them since.
-    /// </summary>
+    private void EnsureManualTarget()
+    {
+        try
+        {
+            if (Plugin.ObjectTable.LocalPlayer is not { } me)
+                return;
+            // An existing valid target (the capture prey, an attacker, or a training dummy) wins.
+            if (me.TargetObject is IBattleNpc { IsTargetable: true } current && !current.IsDead
+                && (current.Position - me.Position).Length() - current.HitboxRadius <= 4f)
+                return;
+
+            var mob = Plugin.ObjectTable.OfType<IBattleNpc>()
+                .Where(x => GameActions.IsHostile(x) && !x.IsDead && x.CurrentHp > 0 && x.IsTargetable
+                    && !GameActions.IsTrainingDummy(x)
+                    && (x.Position - me.Position).Length() - x.HitboxRadius <= 3.5f)
+                .OrderBy(x => (x.Position - me.Position).Length() - x.HitboxRadius)
+                .FirstOrDefault();
+            if (mob is null)
+                return;
+            this.manualActions ??= new GameActions(Plugin.ObjectTable, Plugin.Condition, Plugin.GameGui, Plugin.PlayerState);
+            this.manualActions.Target(mob);
+            if (this.manualSelectedTarget != mob.GameObjectId)
+            {
+                this.manualSelectedTarget = mob.GameObjectId;
+                this.manualSelectedSince = DateTime.UtcNow;
+                this.manualStallWarned = false;
+                note($"Combat handoff: targeted {mob.Name.TextValue} before asking RSR for Manual", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Target acquisition should never disable the rotation; report the failure once in the plugin log.
+            if (!this.targetWarned)
+            {
+                this.targetWarned = true;
+                log.Warning(ex, "Could not preselect an adjacent hostile for RSR Manual");
+            }
+        }
+    }
+
+    private void WatchManualEngagement(DateTime now)
+    {
+        if (this.manualSelectedTarget == 0 || this.manualStallWarned || now - this.manualSelectedSince < TimeSpan.FromSeconds(10))
+            return;
+        this.manualStallWarned = true;
+        if (Plugin.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.InCombat])
+            return;
+        if (Plugin.ObjectTable.LocalPlayer?.TargetObject?.GameObjectId != this.manualSelectedTarget
+            || Plugin.ObjectTable.SearchById(this.manualSelectedTarget) is not IBattleNpc mob || mob.IsDead || !mob.IsTargetable)
+            return;
+        note($"Combat handoff stalled for {mob.Name.TextValue} after 10 s. Retrying auto-attack and checking RSR.", true);
+        this.manualActions?.EnsureAutoAttack(mob);
+        this.current = null; // Reassert mode on this same tick.
+    }
+
     public void ForceOff()
     {
         this.current = null;
@@ -122,33 +178,18 @@ public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log
         this.Set(Mode.Off);
     }
 
-    /// <summary>
-    /// Whether RSR's auto-rotation is on (its <c>AutorotationActive</c>, since August 2026); null when it does not answer
-    /// (an older RSR).
-    /// </summary>
     public bool? Active()
     {
-        try
-        {
-            return this.active.InvokeFunc();
-        }
-        catch (Exception)
-        {
-            return null;
-        }
+        try { return this.active.InvokeFunc(); }
+        catch (Exception) { return null; }
     }
 
-    /// <summary>
-    /// Forgets the mode and override last sent, so the next <see cref="Set"/> sends them again. RSR switches itself off on
-    /// its own (30 s after combat, between areas), so this is called when a fight starts and after a zone change.
-    /// </summary>
     public void Reassert()
     {
         this.current = null;
         this.freely = null;
     }
 
-    /// <summary>Turns the rotation off and drops the target override; safe to call when nothing was set.</summary>
     public void Release()
     {
         if (this.current == Mode.Off && this.freely == false)
