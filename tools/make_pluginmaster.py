@@ -1,90 +1,104 @@
-"""Generate pluginmaster.json (Dalamud custom repository index) from the DalamudPackager manifest.
+"""Publish the custom Dalamud repository entry from a BUILT fork package.
 
-Usage (after `dotnet build CrucibleSux/CrucibleSux.csproj -c Release`):
-    py -3 tools/make_pluginmaster.py --tag v0.1.0
-The tag must match a GitHub Release that has latest.zip attached. The manifest's changelog is the release's
-CHANGELOG.md `## [X.Y.Z]` section; without one (and no --changelog) the script exits 1 and writes nothing.
+The package's `CrucibleSuxLeveler.json`, not the old upstream `CrucibleSux.json`, is authoritative.
+Examples:
+  python tools/make_pluginmaster.py --tag v0.3.25
+  python tools/make_pluginmaster.py --tag v0.3.25 --output /tmp/pluginmaster.json
 """
 import argparse
 import json
-import os
+from pathlib import Path
+import re
 import sys
 import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_CANDIDATES = [os.path.join(ROOT, "CrucibleSux", "bin", *tail, "CrucibleSux", "CrucibleSux.json") for tail in (("Release",), ("x64", "Release"))]
-MANIFEST = next((c for c in _CANDIDATES if os.path.exists(c)), _CANDIDATES[0])
-OUTPUT = os.path.join(ROOT, "pluginmaster.json")
+ROOT = Path(__file__).resolve().parents[1]
+INTERNAL_NAME = "CrucibleSuxLeveler"
+DEFAULT_REPO = "pistolero-git/CrucibleSux"
 
 
-def changelog_section(tag: str) -> str:
-    """Return the CHANGELOG.md section for `tag` (vX.Y.Z -> [X.Y.Z]) as plain text, or empty."""
-    path = os.path.join(ROOT, "CHANGELOG.md")
-    if not os.path.exists(path):
-        return ""
-    version = tag[1:] if tag.startswith("v") else tag
-    lines = []
+def release_notes(version: str) -> str:
+    """Return the fork changelog section for the semantic version."""
+    path = ROOT / "FORK_CHANGELOG.md"
+    if not path.is_file():
+        raise ValueError(f"Missing {path}")
+    captured = []
     capture = False
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("## "):
-                if capture:
-                    break
-                capture = line.startswith(f"## [{version}]")
-                continue
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## ["):
             if capture:
-                lines.append(line.rstrip())
-    text = "\n".join(lines).strip()
-    # Headings inside the section become plain labels; bullets stay.
-    return "\n".join(line.replace("### ", "") for line in text.splitlines())
+                break
+            capture = line.startswith(f"## [{version}]")
+        elif capture:
+            captured.append(line)
+    notes = "\n".join(captured).strip()
+    if not notes or not any(line.lstrip().startswith("- ") for line in notes.splitlines()):
+        raise ValueError(f"Missing release notes in FORK_CHANGELOG.md for [{version}]")
+    return notes
+
+
+def find_manifest() -> Path:
+    # SDK output can use either bin/Release or bin/x64/Release depending on the build.
+    candidates = list((ROOT / "CrucibleSux" / "bin").glob(
+        f"**/{INTERNAL_NAME}/{INTERNAL_NAME}.json"))
+    if not candidates:
+        raise FileNotFoundError(f"Could not find {INTERNAL_NAME}.json; build CrucibleSux.csproj first")
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", default="xenofei/CrucibleSux", help="GitHub owner/name")
-    parser.add_argument("--tag", help="Release tag (default: v<Major>.<Minor>.<Build> from the manifest)")
-    parser.add_argument("--branch", default="main", help="Branch that serves pluginmaster.json and the icon")
-    parser.add_argument("--changelog", default="", help="Changelog text for this version")
+    parser.add_argument("--repo", default=DEFAULT_REPO)
+    parser.add_argument("--tag", required=True, help="vX.Y.Z or vX.Y.Z-rcN")
+    parser.add_argument("--branch", default="main")
+    parser.add_argument("--manifest", type=Path, default=None, help="Override packaged manifest location")
+    parser.add_argument("--output", type=Path, default=ROOT / "pluginmaster.json")
     args = parser.parse_args()
 
-    if not os.path.exists(MANIFEST):
-        print(f"manifest not found: {MANIFEST}\nrun: dotnet build CrucibleSux/CrucibleSux.csproj -c Release", file=sys.stderr)
-        return 1
+    match = re.fullmatch(r"v(\d+\.\d+\.\d+)(?:-rc\d+)?", args.tag)
+    if not match:
+        parser.error("tag must be vX.Y.Z or vX.Y.Z-rcN")
+    version = match.group(1)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
+        parser.error("--repo must be GitHub owner/repository")
+    if not re.fullmatch(r"[A-Za-z0-9._/-]+", args.branch):
+        parser.error("--branch must be a branch name")
 
-    with open(MANIFEST, encoding="utf-8") as f:
-        manifest = json.load(f)
-
-    version = manifest["AssemblyVersion"]
-    tag = args.tag or "v" + ".".join(version.split(".")[:3])
+    manifest_path = args.manifest or find_manifest()
+    entry = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if entry.get("InternalName") != INTERNAL_NAME:
+        raise ValueError(f"Package InternalName is {entry.get('InternalName')!r}, not {INTERNAL_NAME}")
+    expected_version = version + ".0"
+    if entry.get("AssemblyVersion") != expected_version:
+        raise ValueError(f"Package version {entry.get('AssemblyVersion')!r} does not match {args.tag} ({expected_version})")
+    if entry.get("Name") != "Crucible SUX Leveler":
+        raise ValueError("Package Name must be Crucible SUX Leveler")
+    notes = release_notes(version)
+    base = f"https://github.com/{args.repo}"
     raw = f"https://raw.githubusercontent.com/{args.repo}/{args.branch}"
-    download = f"https://github.com/{args.repo}/releases/download/{tag}/latest.zip"
-
-    changelog = args.changelog or changelog_section(tag)
-    if not changelog:
-        print(f"CHANGELOG.md has no '## [{tag.lstrip('v')}]' section; write the release notes (or pass --changelog)", file=sys.stderr)
-        return 1
-
-    entry = dict(manifest)
-    entry["Description"] = entry.get("Description", "").replace("\r\n", "\n")
+    download = f"{base}/releases/download/{args.tag}/latest.zip"
     entry.update({
+        "RepoUrl": base,
         "IconUrl": f"{raw}/assets/icon.png",
         "DownloadLinkInstall": download,
         "DownloadLinkTesting": download,
         "DownloadLinkUpdate": download,
+        "Description": entry.get("Description", "").replace("\r\n", "\n"),
+        "Changelog": notes,
         "LastUpdate": int(time.time()),
         "DownloadCount": 0,
         "IsHide": False,
         "IsTestingExclusive": False,
-        "Changelog": changelog,
     })
-
-    with open(OUTPUT, "w", encoding="utf-8", newline="\n") as f:
-        json.dump([entry], f, indent=2, ensure_ascii=False)
-        f.write("\n")
-
-    print(f"wrote {OUTPUT}\n  version {version} -> {download}\n  repo url: {raw}/pluginmaster.json")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps([entry], indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"Wrote {args.output} with {INTERNAL_NAME} {expected_version} -> {download}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (ValueError, FileNotFoundError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)

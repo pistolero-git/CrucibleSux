@@ -1,34 +1,64 @@
-# Crucible SUX Leveler — fork overlay
+# Crucible SUX Leveler — installation and release guide
 
-This bundle contains both previously requested changes and gives the fork a **different Dalamud internal identity**.
+This repository is the fork at **https://github.com/pistolero-git/CrucibleSux**. The original upstream repository is https://github.com/xenofei/CrucibleSux.
 
-- Display name: **Crucible SUX Leveler**
-- Assembly/InternalName: **CrucibleSuxLeveler**
-- Output DLL: **CrucibleSuxLeveler.dll**
-- Commands: **/suxl** and **/cruciblesuxleveler** (instead of /sux and /cruciblesux)
-- Original solution: **CrucibleSux.sln** (unchanged)
+## Apply this drop-in ZIP
 
-## Apply to your existing checkout
+Extract the ZIP **over the current repository root**, the directory containing `CrucibleSux.sln`, and overwrite files. The ZIP contains complete source/configuration files in their relative directories: **no patch or assembly script is needed**. It also includes the existing two feature implementations, so you do not need earlier ZIPs.
 
-1. Commit or back up local modifications. This ZIP overwrites 5 existing files and adds 3 C# files plus this patch and note.
-2. Extract the ZIP **at the repository root** (the folder containing `CrucibleSux.sln`).
-3. Apply the one remaining command-rename patch (because the original `Plugin.cs` is not bundled in this overlay):
+## Plugin identity
+
+| | Original Crucible SUX | This fork |
+|---|---|---|
+| Display name | Crucible SUX | Crucible SUX Leveler |
+| Internal name | CrucibleSux | CrucibleSuxLeveler |
+| DLL | CrucibleSux.dll | CrucibleSuxLeveler.dll |
+| Command | /sux | /suxl |
+| Repository | xenofei/CrucibleSux | pistolero-git/CrucibleSux |
+
+The solution filename and C# namespaces remain unchanged; they do not determine the plugin's internal identity. The fork's separate configuration location means existing upstream beast ranks/settings are not automatically migrated.
+
+## Build and test on Bazzite / Linux
+
+Install the .NET 10 SDK and make Dalamud development files discoverable:
+
+```bash
+export DALAMUD_HOME="$HOME/.xlcore/dalamud/Hooks/dev"
+dotnet build CrucibleSux/CrucibleSux.csproj -c Release
+dotnet test --project CrucibleSux.Tests -c Release
+python3 tools/validate_fork_release.py
+```
+
+For a local development plugin, add the built `CrucibleSuxLeveler.dll` under `/xlsettings` > Experimental > Dev Plugin Locations. Remove obsolete CrucibleSux dev locations that point to the same path. Restart FFXIV if an old plugin is already loaded. Do not simultaneously run automated sessions in upstream and fork.
+
+## Release v0.3.25
+
+1. Commit the replaced files to `main` and allow CI to finish successfully. If GitHub Actions is unavailable or disabled, enable it for your repository.
+2. Confirm `CrucibleSux/CrucibleSux.csproj` has `<Version>0.3.25.0</Version>` and `FORK_CHANGELOG.md` has a `[0.3.25]` section.
+3. Push a matching tag:
 
    ```bash
-   git apply --check CrucibleSux_Plugin_Command_Rename.patch
-   git apply CrucibleSux_Plugin_Command_Rename.patch
+   git tag v0.3.25
+   git push origin main
+   git push origin v0.3.25
    ```
 
-4. Build with `dotnet build CrucibleSux.sln -c Release`.
-5. In `/xlsettings` > Experimental > Dev Plugin Locations, remove the old CrucibleSux development DLL path and add the **new** `CrucibleSuxLeveler.dll` path from your build output.
-6. Fully restart the game; invoke `/suxl` for the fork, `/sux` for the original.
+4. The release workflow checks the version and plugin identity, builds and tests, ensures `CrucibleSuxLeveler.dll` and `CrucibleSuxLeveler.json` are in `latest.zip`, then publishes the GitHub release.
+5. After a **stable** release succeeds, the workflow updates `pluginmaster.json` on `main`, unhiding the fork entry and linking to `https://github.com/pistolero-git/CrucibleSux/releases/download/v0.3.25/latest.zip`.
+6. Configure the following URL under Dalamud custom repositories, then install **Crucible SUX Leveler**:
 
-**Do not aim both plugins at the same DLL path.** Also do not run automation in both plugins at once because both control AutoDuty and the game.
+   ```text
+   https://raw.githubusercontent.com/pistolero-git/CrucibleSux/main/pluginmaster.json
+   ```
 
-## Important — repository installations
+**Before step 4**, the manifest deliberately sets `IsHide: true` because no v0.3.25 downloadable release exists yet. This is intentional. It becomes installable after the stable release updates it.
 
-This overlay changes local build identity and in-game command. The existing `pluginmaster.json` and `.github/workflows/release.yml` in your checkout still target the ORIGINAL CrucibleSux build and/or the upstream release. They are **not** valid for distributing the renamed fork as a separate custom repository plugin without additional changes and a published fork release. Do not try to install the renamed fork from the old `pluginmaster.json`.
+## Every later release
 
-After changing InternalName, Dalamud saves new settings under a different plugin identity; previous Crucible SUX character rank cache and settings are **not** migrated automatically. The original plugin remains independent. The file namespace/class names and core library do not need renaming. The solution does not require an update.
+Increment the `<Version>` and `<FileVersion>` fields in `CrucibleSux.csproj` to the next `X.Y.Z.0`, add a matching `## [X.Y.Z]` section in `FORK_CHANGELOG.md`, push the code, and tag `vX.Y.Z`. The workflow rejects a version/tag mismatch or upstream plugin identity. Each stable release creates updated metadata and `LastUpdate`, enabling Dalamud upgrades.
 
-No .NET SDK and Dalamud compilation environment were available to validate a complete build. Source overlay and patch contents are provided for local build/testing.
+For a prerelease, use `vX.Y.Z-rcN`. This creates a prerelease artifact without updating the stable `pluginmaster.json`.
+
+## Current limitations
+
+Live UI field offsets for beast ranks/EXP and AutoDuty leveling behavior have not been validated against FFXIV in this environment. Run tests and check the plugin in game before general distribution. Publishing is not performed by this ZIP; you must commit and tag it in your repository.

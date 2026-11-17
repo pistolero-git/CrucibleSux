@@ -502,8 +502,8 @@ public sealed class MainWindow : Window
         ImGui.Spacing();
         ImGui.TextWrapped("Unattended automation is against the game's terms of service. Use it at your own risk.");
         ImGui.Spacing();
-        ImGui.TextDisabled("Commands: /sux opens this window; /sux check prints what this sitting can cover; /sux run starts the queue; " +
-                           "/sux journey starts the Beastmaster journey; /sux stop stops either.");
+        ImGui.TextDisabled("Commands: /suxl opens this window; /suxl check prints what this sitting can cover; /suxl run starts the queue; " +
+                           "/suxl journey starts the Beastmaster journey; /suxl stop stops either.");
     }
 
     private static void Mark(bool? done)

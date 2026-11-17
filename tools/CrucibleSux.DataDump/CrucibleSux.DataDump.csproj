@@ -1,10 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <!--
-    Offline dump of the Crucible's game data (the XBM* sheets, the Beastmaster quests, achievements, currencies and gear)
-    from a local game install, for pinning IDs in Core and refreshing the test fixtures on patch day. Not shipped.
-    It references Dalamud's own Lumina, so the sheet types match what the plugin sees at runtime (the NuGet Lumina.Excel
-    predates the XBM sheets).
+    Offline data-dump utility; not part of the distributed plugin.
+    Use Dalamud's bundled Lumina so the sheet types match the plugin's runtime.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -12,13 +9,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>CrucibleSux.DataDump</RootNamespace>
-    <DalamudLibPath Condition="'$(DALAMUD_HOME)' != ''">$(DALAMUD_HOME)\</DalamudLibPath>
-    <DalamudLibPath Condition="'$(DalamudLibPath)' == ''">$(AppData)\XIVLauncher\addon\Hooks\dev\</DalamudLibPath>
+    <!-- DALAMUD_HOME can override the per-platform default. Use portable / path separators. -->
+    <DalamudLibPath Condition="'$(DALAMUD_HOME)' != ''">$(DALAMUD_HOME)</DalamudLibPath>
+    <DalamudLibPath Condition="'$(DalamudLibPath)' == '' and '$(OS)' == 'Windows_NT'">$(AppData)/XIVLauncher/addon/Hooks/dev</DalamudLibPath>
+    <DalamudLibPath Condition="'$(DalamudLibPath)' == '' and '$(OS)' != 'Windows_NT'">$(HOME)/.xlcore/dalamud/Hooks/dev</DalamudLibPath>
   </PropertyGroup>
-
   <ItemGroup>
-    <Reference Include="Lumina" HintPath="$(DalamudLibPath)Lumina.dll" />
-    <Reference Include="Lumina.Excel" HintPath="$(DalamudLibPath)Lumina.Excel.dll" />
+    <Reference Include="Lumina" HintPath="$(DalamudLibPath)/Lumina.dll" />
+    <Reference Include="Lumina.Excel" HintPath="$(DalamudLibPath)/Lumina.Excel.dll" />
   </ItemGroup>
-
 </Project>
