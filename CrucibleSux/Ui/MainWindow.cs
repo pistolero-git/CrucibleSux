@@ -32,7 +32,7 @@ public sealed class MainWindow : Window
     private TeamPlan? team;
 
     public MainWindow(Session session, CrucibleData data, Configuration config, BestiaryWatcher bestiary, SessionTabs sessionTabs, JourneyTab journeyTab, LogTab logTab, Action save)
-        : base("Crucible SUX###CrucibleSuxMain")
+        : base("Crucible SUX Leveler###CrucibleSuxLevelerMain")
     {
         this.session = session;
         this.data = data;

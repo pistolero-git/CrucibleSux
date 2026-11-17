@@ -23,8 +23,8 @@ namespace CrucibleSux;
 /// </summary>
 public sealed class Plugin : IDalamudPlugin
 {
-    private const string Command = "/sux";
-    private const string LongCommand = "/cruciblesux";
+    private const string Command = "/suxl";
+    private const string LongCommand = "/cruciblesuxleveler";
 
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
@@ -48,7 +48,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IGameConfig GameConfig { get; private set; } = null!;
 
     private readonly Configuration config;
-    private readonly WindowSystem windowSystem = new("CrucibleSux");
+    private readonly WindowSystem windowSystem = new("CrucibleSuxLeveler");
     private readonly MainWindow mainWindow;
     private readonly BestiaryWatcher bestiary;
     private readonly Session session;
@@ -101,12 +101,12 @@ public sealed class Plugin : IDalamudPlugin
 
         var help = new CommandInfo(this.OnCommand)
         {
-            HelpMessage = "Open Crucible SUX. \"/sux check\" prints what you can clear in one sitting; \"/sux run\" starts the queue; " +
-                          "\"/sux journey\" starts the Beastmaster journey; \"/sux stop\" stops either; " +
-                          "\"/sux report\" copies the latest combat log summary for a bug report (\"/sux report full\" copies all of it).",
+            HelpMessage = "Open Crucible SUX Leveler. \"/suxl check\" prints what you can clear in one sitting; \"/suxl run\" starts the queue; " +
+                          "\"/suxl journey\" starts the Beastmaster journey; \"/suxl stop\" stops either; " +
+                          "\"/suxl report\" copies the latest combat log summary for a bug report (\"/suxl report full\" copies all of it).",
         };
         CommandManager.AddHandler(Command, help);
-        CommandManager.AddHandler(LongCommand, new CommandInfo(this.OnCommand) { HelpMessage = "Same as /sux.", ShowInHelp = false });
+        CommandManager.AddHandler(LongCommand, new CommandInfo(this.OnCommand) { HelpMessage = "Same as /suxl.", ShowInHelp = false });
 
         PluginInterface.UiBuilder.Draw += this.OnDraw;
         PluginInterface.UiBuilder.OpenMainUi += this.mainWindow.Toggle;

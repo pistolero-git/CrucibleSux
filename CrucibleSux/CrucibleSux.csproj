@@ -1,37 +1,26 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
-
   <PropertyGroup>
     <Version>0.3.24.0</Version>
-    <Author>Michiru Tsukikage</Author>
-    <Name>Crucible SUX</Name>
-    <Punchline>Set-and-forget Unbroken eXecutor: queue the Crucible of the Unbroken boards, step away, come back to a report.</Punchline>
-    <Description>Crucible SUX (Set-and-forget Unbroken eXecutor) tracks your Beastmaster's Crucible of the Unbroken progress: boards, degrees, Apex and Legendary scores, beasts befriended and their ranks.
-It checks whether you can clear the remaining boards in one sitting and suggests a team per board.
-Its session queue runs boards through AutoDuty (erdelf's build), watches every run, stops a stuck one and reports back. Its opt-in journey does the Beastmaster job quests, collects the beasts and levels the job to 50, each part off by default. Unattended automation is against the game's terms of service: use it at your own risk.</Description>
-    <RepoUrl>https://github.com/xenofei/CrucibleSux</RepoUrl>
-    <IconUrl>https://raw.githubusercontent.com/xenofei/CrucibleSux/main/assets/icon.png</IconUrl>
+    <AssemblyName>CrucibleSuxLeveler</AssemblyName>
+    <Author>Michiru Tsukikage; pistolero-git (fork)</Author>
+    <Name>Crucible SUX Leveler</Name>
+    <Punchline>Crucible SUX fork with beast carry-leveling and direct rank/EXP tracking.</Punchline>
+    <Description>Crucible SUX Leveler is a fork of Crucible SUX with a carry-leveling team mode and improved beast rank and EXP tracking. Uses AutoDuty to automate Crucible boards. Unattended automation is against the game terms of service.</Description>
+    <RepoUrl>https://github.com/pistolero-git/CrucibleSux</RepoUrl>
+    <IconUrl>https://raw.githubusercontent.com/pistolero-git/CrucibleSux/main/assets/icon.png</IconUrl>
     <Tags>beastmaster;crucible;tracker;planner</Tags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Copyright>Copyright (c) 2026 Michiru Tsukikage</Copyright>
+    <Copyright>Copyright (c) 2026 Michiru Tsukikage; fork changes by pistolero-git</Copyright>
     <RootNamespace>CrucibleSux</RootNamespace>
-    <!--
-      The game version (ffxivgame.ver) the sheet column maps (docs/data/xbm-columns.md) and the Bestiary reader were
-      checked against. The release workflow refuses a tag while it is empty.
-    -->
     <CrucibleSuxTestedGameVersion>2026.10.06.0000.0000</CrucibleSuxTestedGameVersion>
   </PropertyGroup>
-
   <ItemGroup>
     <AssemblyMetadata Include="TestedGameVersion" Value="$(CrucibleSuxTestedGameVersion)" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\CrucibleSux.Core\CrucibleSux.Core.csproj" />
   </ItemGroup>
-
   <ItemGroup>
-    <!-- Packaged as images\icon.png, where Dalamud looks for a plugin's icon inside the zip; assets\icon.png stays the source. -->
     <Content Include="..\assets\icon.png" Link="images\icon.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\assets\icon.png')" />
   </ItemGroup>
-
 </Project>
