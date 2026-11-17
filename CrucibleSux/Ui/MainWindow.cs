@@ -25,7 +25,7 @@ public sealed class MainWindow : Window
     private readonly SessionTabs sessionTabs;
     private readonly JourneyTab journeyTab;
     private readonly LogTab logTab;
-    private bool selectSettings;
+    private MenuPage currentPage = MenuPage.Dashboard;
     private bool missingOnly;
     private int teamBoard = 1;
     private (int Board, int Generation)? teamKey;
@@ -42,45 +42,255 @@ public sealed class MainWindow : Window
         this.journeyTab = journeyTab;
         this.logTab = logTab;
         this.save = save;
-        this.SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(560, 380) };
+        this.SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(780, 510) };
+        this.Size = new Vector2(1090, 750);
+        this.SizeCondition = ImGuiCond.FirstUseEver;
     }
+
+    // This is an original ImGui/Dalamud dashboard. It does not depend on Glasswork or copy
+    // Keybound Brawler Autopilot's AGPL-licensed shell or widgets.
+    private enum MenuPage
+    {
+        Dashboard,
+        Run,
+        Journey,
+        Readiness,
+        Bestiary,
+        Roster,
+        Teams,
+        History,
+        Log,
+        Plugins,
+        Settings,
+        About,
+    }
+
+    private static readonly Vector4 RailBackground = new(0.070f, 0.082f, 0.105f, 1f);
+    private static readonly Vector4 BodyBackground = new(0.098f, 0.113f, 0.137f, 1f);
+    private static readonly Vector4 Accent = new(0.49f, 0.80f, 0.92f, 1f);
+    private static readonly Vector4 Muted = new(0.60f, 0.65f, 0.72f, 1f);
 
     public void OpenSettings()
     {
+        this.currentPage = MenuPage.Settings;
         this.IsOpen = true;
-        this.selectSettings = true;
     }
 
     public override void Draw()
     {
-        using var bar = ImRaii.TabBar("##tabs");
-        if (!bar)
-            return;
+        // Two independent scrolling regions avoid overflowing the header when lots of data is present.
+        float available = ImGui.GetContentRegionAvail().X;
+        float railWidth = available < 940f ? 184f : 210f;
+        ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 12f);
+        ImGui.PushStyleColor(ImGuiCol.ChildBg, RailBackground);
+        bool rail = ImGui.BeginChild("##CrucibleRail", new Vector2(railWidth, 0f), ImGuiChildFlags.Borders);
+        if (rail)
+            this.DrawRail();
+        ImGui.EndChild();
+        ImGui.PopStyleColor();
 
-        Tab("Overview", this.DrawOverview);
-        Tab("One sitting", this.DrawSitting);
-        Tab("Run", this.sessionTabs.DrawRun);
-        Tab("History", this.sessionTabs.DrawHistory);
-        Tab("Journey", this.journeyTab.Draw);
-        Tab("Beasts", this.DrawBeasts);
-        Tab("Dungeon roster", this.DrawDungeonRoster);
-        Tab("Teams", this.DrawTeams);
-        Tab("Plugins", this.DrawPlugins);
-        Tab("Log", this.logTab.Draw);
-        if (ImGui.BeginTabItem("Settings", this.selectSettings ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
-        {
-            this.selectSettings = false;
-            this.DrawSettings();
-            ImGui.EndTabItem();
-        }
-        Tab("About", DrawAbout);
+        ImGui.SameLine(0f, 12f);
+        ImGui.PushStyleColor(ImGuiCol.ChildBg, BodyBackground);
+        bool content = ImGui.BeginChild("##CrucibleContent", Vector2.Zero, ImGuiChildFlags.Borders);
+        if (content)
+            this.DrawContent();
+        ImGui.EndChild();
+        ImGui.PopStyleColor();
+        ImGui.PopStyleVar();
     }
 
-    private static void Tab(string label, Action draw)
+    private void DrawRail()
     {
-        using var tab = ImRaii.TabItem(label);
-        if (tab)
-            draw();
+        ImGui.Dummy(new Vector2(0f, 10f));
+        ImGui.Indent(10f);
+        ImGui.TextColored(Accent, "CRUCIBLE");
+        ImGui.TextUnformatted("SUX LEVELER");
+        ImGui.TextColored(Muted, "CONTROL CENTER");
+        ImGui.Unindent(10f);
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        this.RailGroup("COMMAND", [
+            (MenuPage.Dashboard, "Dashboard"),
+            (MenuPage.Run, "Board runner"),
+            (MenuPage.Journey, "Journey"),
+            (MenuPage.Readiness, "Readiness")]);
+        this.RailGroup("BEASTS", [
+            (MenuPage.Bestiary, "Bestiary"),
+            (MenuPage.Roster, "Dungeon roster"),
+            (MenuPage.Teams, "Team planner")]);
+        this.RailGroup("ACTIVITY", [
+            (MenuPage.History, "Run history"),
+            (MenuPage.Log, "Diagnostics")]);
+        this.RailGroup("SYSTEM", [
+            (MenuPage.Plugins, "Dependencies"),
+            (MenuPage.Settings, "Settings"),
+            (MenuPage.About, "About")]);
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Indent(10f);
+        var version = typeof(MainWindow).Assembly.GetName().Version;
+        ImGui.TextColored(Muted, version is null ? "Development build" : $"Version {version.ToString(3)}");
+        ImGui.TextColored(Muted, "/suxl  •  /suxl stop");
+        ImGui.Unindent(10f);
+    }
+
+    private void RailGroup(string heading, (MenuPage Page, string Label)[] entries)
+    {
+        ImGui.Indent(10f);
+        ImGui.TextColored(Muted, heading);
+        ImGui.Unindent(10f);
+        foreach (var entry in entries)
+        {
+            bool selected = entry.Page == this.currentPage;
+            if (selected)
+                ImGui.PushStyleColor(ImGuiCol.Header, new Vector4(0.17f, 0.31f, 0.39f, 1f));
+            if (ImGui.Selectable($"  {entry.Label}##nav{entry.Page}", selected,
+                    ImGuiSelectableFlags.None, new Vector2(-1f, 32f)))
+                this.currentPage = entry.Page;
+            if (selected)
+                ImGui.PopStyleColor();
+        }
+        ImGui.Spacing();
+    }
+
+    private void DrawContent()
+    {
+        ImGui.Indent(14f);
+        ImGui.Dummy(new Vector2(0f, 7f));
+        string title = this.currentPage switch
+        {
+            MenuPage.Dashboard => "Dashboard",
+            MenuPage.Run => "Board runner",
+            MenuPage.Journey => "Beastmaster journey",
+            MenuPage.Readiness => "One-sitting readiness",
+            MenuPage.Bestiary => "Beast collection",
+            MenuPage.Roster => "Dungeon roster",
+            MenuPage.Teams => "Team planner",
+            MenuPage.History => "Run history",
+            MenuPage.Log => "Diagnostics",
+            MenuPage.Plugins => "Plugin dependencies",
+            MenuPage.Settings => "Preferences",
+            _ => "About Crucible SUX Leveler",
+        };
+        string detail = this.currentPage switch
+        {
+            MenuPage.Dashboard => "Your progress, board readiness and next actions at a glance",
+            MenuPage.Run => "Queue, start and monitor AutoDuty-powered Crucible boards",
+            MenuPage.Journey => "Track automatic progression and the current objective",
+            MenuPage.Readiness => "See what can be completed in the next sitting",
+            MenuPage.Bestiary => "Owned beasts, verified ranks and EXP scanning",
+            MenuPage.Roster => "Last observed beasts registered for the current dungeon",
+            MenuPage.Teams => "Choose and inspect candidate Crucible teams",
+            MenuPage.History => "Recent runs and their outcomes",
+            MenuPage.Log => "Combat events, stalled handoffs and troubleshooting",
+            MenuPage.Plugins => "Automation engines, dependencies and their health",
+            MenuPage.Settings => "Configure the fork's behavior and automation preferences",
+            _ => "Project information, limitations and chat commands",
+        };
+        ImGui.TextColored(Accent, "CRUCIBLE SUX LEVELER");
+        ImGui.TextUnformatted(title);
+        ImGui.TextColored(Muted, detail);
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        switch (this.currentPage)
+        {
+            case MenuPage.Dashboard:
+                this.DrawDashboard();
+                break;
+            case MenuPage.Run:
+                this.sessionTabs.DrawRun();
+                break;
+            case MenuPage.Journey:
+                this.journeyTab.Draw();
+                break;
+            case MenuPage.Readiness:
+                this.DrawSitting();
+                break;
+            case MenuPage.Bestiary:
+                this.DrawBeasts();
+                break;
+            case MenuPage.Roster:
+                this.DrawDungeonRoster();
+                break;
+            case MenuPage.Teams:
+                this.DrawTeams();
+                break;
+            case MenuPage.History:
+                this.sessionTabs.DrawHistory();
+                break;
+            case MenuPage.Log:
+                this.logTab.Draw();
+                break;
+            case MenuPage.Plugins:
+                this.DrawPlugins();
+                break;
+            case MenuPage.Settings:
+                this.DrawSettings();
+                break;
+            case MenuPage.About:
+                DrawAbout();
+                break;
+        }
+        ImGui.Dummy(new Vector2(0f, 14f));
+        ImGui.Unindent(14f);
+    }
+
+    private void DrawDashboard()
+    {
+        var snapshot = this.session.Snapshot;
+        var plan = this.session.Plan;
+        int verified = snapshot?.UnlockedBeasts?.Count(id =>
+            snapshot.Beasts.GetValueOrDefault(id) is { Rank: > 0, RankIsEstimated: false }) ?? 0;
+
+        using (var tiles = ImRaii.Table("##dashboardMetrics", 4,
+                   ImGuiTableFlags.SizingStretchSame | ImGuiTableFlags.BordersInnerV))
+        {
+            if (tiles)
+            {
+                Metric("BEASTMASTER", snapshot?.JobLevel > 0 ? $"Lv. {snapshot.JobLevel}" : "--", "Character level");
+                Metric("COLLECTION", snapshot?.UnlockedBeasts is { } owned
+                    ? $"{owned.Count}/{CrucibleIds.TotalBeasts}" : "--", "Beasts befriended");
+                Metric("RANKS VERIFIED", snapshot?.UnlockedBeasts is { } known
+                    ? $"{verified}/{known.Count}" : "--", "Live Bestiary data");
+                Metric("NEXT SITTING", plan is null ? "--" : $"{plan.Boards.Count}", "Boards planned");
+            }
+        }
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        ImGui.TextColored(Accent, "QUICK ACCESS");
+        if (ImGui.Button("Open board runner", new Vector2(170f, 38f)))
+            this.currentPage = MenuPage.Run;
+        ImGui.SameLine();
+        if (ImGui.Button("Open journey", new Vector2(150f, 38f)))
+            this.currentPage = MenuPage.Journey;
+        ImGui.SameLine();
+        if (ImGui.Button("View dungeon roster", new Vector2(170f, 38f)))
+            this.currentPage = MenuPage.Roster;
+
+        if (this.bestiary.IsScanning)
+            ImGui.TextColored(ImGuiColors.DalamudYellow, this.bestiary.ScanStatus);
+        else if (snapshot?.UnlockedBeasts is { } beasts && verified < beasts.Count)
+            ImGui.TextColored(ImGuiColors.DalamudYellow,
+                $"{beasts.Count - verified} beast rank(s) still need live verification. Open Bestiary to scan.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        this.DrawOverview();
+    }
+
+    private static void Metric(string label, string value, string description)
+    {
+        ImGui.TableNextColumn();
+        ImGui.TextColored(Muted, label);
+        ImGui.TextColored(Accent, value);
+        ImGui.TextDisabled(description);
     }
 
     private void DrawOverview()

@@ -1,25 +1,28 @@
-# Crucible SUX Leveler v0.3.26 — direct source overlay
+# Crucible SUX Leveler v0.3.27 — original dashboard UI
 
-This ZIP contains **complete replacement `.cs` files**, not patch fragments. Extract it over the folder containing `CrucibleSux.sln`; existing source that is not included is unchanged.
+This ZIP contains **complete replacement source files**, not patches. It is designed to overlay the **v0.3.26** source in `pistolero-git/CrucibleSux` and preserves existing plugin behavior.
 
 ## Changes
 
-- Combat handoff: `CrucibleSux/Integrations/RotationSolverIpc.cs` now chooses an eligible adjacent mob before switching RSR into Manual mode when the journey has not yet selected a valid target. It preserves explicitly selected nearby targets, including capture targets and training dummies.
-- Bestiary scan: `BestiaryWatcher` scans all **owned** beasts when the Bestiary opens outside a board and AutoDuty is idle. The scan can also be requested from the Beasts tab. The bestiary must be open for the plugin to see the rank fields; unknown/unowned beasts are never given invented levels.
-- Dungeon roster: a new tab shows the selected beasts from `XBMPetParty`, with rank, last observed HP, and horn assignment, and keeps the latest snapshot after the registration window closes.
-- Version 0.3.26.0 / Git tag `v0.3.26`; the old published plugin manifest remains at 0.3.25 until the new GitHub release is successfully published.
+- A polished two-column interface with sidebar navigation instead of 12 scrolling horizontal tabs.
+- A dashboard with character level, collection, verified beast ranks, planned boards and quick navigation.
+- Separate Operations, Beasts, Activity and System navigation categories.
+- Retains all existing pages, settings, scanning controls, run controls, journey, Dungeon roster, Team planning and logs.
+- Displays the installed assembly version automatically in the sidebar.
+- Pure ImGui/Dalamud UI; no Glasswork dependency and no copied AGPL sources or assets.
 
-## Install
+## Installation
 
 ```bash
 cd ~/Documents/git/CrucibleSux
-unzip -o ~/Downloads/CrucibleSux_Leveler_v0.3.26_DropIn.zip
+git pull --rebase origin main
+unzip -o ~/Downloads/CrucibleSux_Leveler_v0.3.27_UI_DropIn.zip
 dotnet build CrucibleSux/CrucibleSux.csproj -c Release
 dotnet test --project CrucibleSux.Tests -c Release
+git diff --check
+git status
 ```
 
-Run `/suxl`, open **Beasts**, then open the Master's Bestiary before entering a board. The scanner reads the rank of each owned beast. The **Dungeon roster** tab displays the registered team once a Crucible party screen is observed.
+Commit and push when the build and tests pass. Create and push the tag `v0.3.27` only after verifying the UI in Dalamud. Release Actions will update `pluginmaster.json` after publishing a package.
 
-Commit the files and push. After CI passes, create `v0.3.26` and push that tag to publish the release and update `pluginmaster.json`.
-
-**Important:** The old `pluginmaster.json` is deliberately not overwritten. It should continue serving the last valid release until the release workflow publishes v0.3.26. The plugin still needs live validation. A successful build alone does not publish or update Dalamud's repository listing.
+**Not included**: a fix for the AutoDuty boss-encounter standstill. The earlier boss issue remains separate from this UI redesign.

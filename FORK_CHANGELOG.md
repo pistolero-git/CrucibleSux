@@ -2,6 +2,19 @@
 
 The upstream project's earlier release history remains in `CHANGELOG.md`. The fork tracks its own version numbers here.
 
+## [0.3.27] - 2026-11-16
+
+### Changed
+
+- Replaced the overcrowded horizontal tab strip with an original two-pane dashboard: grouped sidebar navigation, a persistent context header, and a scrollable workspace.
+- Added a dashboard with live Beastmaster level, collection progress, verified ranks, planned boards, and shortcuts to the board runner, journey and roster.
+- Kept every existing tab and its underlying behavior, including Bestiary rank scans, Dungeon roster, Team planner, diagnostics, configuration and safety messaging.
+- The UI is original ImGui code and does not copy Keybound Brawler Autopilot/Glasswork source (AGPL-3.0).
+
+### Note
+
+- This is a presentation release only. It does **not** resolve the AutoDuty boss-engagement stall described before this UI request.
+
 ## [0.3.26] - 2026-11-16
 
 ### Fixed
