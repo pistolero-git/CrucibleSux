@@ -30,6 +30,8 @@ public sealed class SessionRunner : IDisposable
     private readonly Session session;
     private readonly AutoDutyIpc autoDuty;
     private readonly BossModIpc bossMod;
+    private readonly BoardRotationIpc boardRotationIpc;
+    private readonly BoardRotationRecovery boardRotationRecovery = new();
     private readonly Configuration config;
     private readonly Action save;
     private readonly IClientState clientState;
@@ -47,6 +49,8 @@ public sealed class SessionRunner : IDisposable
     private ulong character;
     private int saved;
     private int unanswered;
+    private bool boardRotationNoted;
+    private bool? lastBoardRotationActive;
 
     public SessionRunner(
         Session session,
@@ -65,6 +69,7 @@ public sealed class SessionRunner : IDisposable
         this.session = session;
         this.autoDuty = autoDuty;
         this.bossMod = bossMod;
+        this.boardRotationIpc = new BoardRotationIpc(Plugin.PluginInterface, Plugin.Log);
         this.config = config;
         this.save = save;
         this.clientState = clientState;
@@ -84,6 +89,9 @@ public sealed class SessionRunner : IDisposable
     public Orchestrator? Current { get; private set; }
 
     public SessionReport? LastReport { get; private set; }
+
+    /// <summary>Live handoff status shown in the board runner.</summary>
+    public string RotationStatus { get; private set; } = "Waiting for dungeon entry";
 
     public void Dispose()
     {
@@ -137,6 +145,10 @@ public sealed class SessionRunner : IDisposable
         this.character = this.player.ContentId;
         this.saved = 0;
         this.LastReport = null;
+        this.boardRotationRecovery.Reset();
+        this.boardRotationNoted = false;
+        this.lastBoardRotationActive = null;
+        this.RotationStatus = "Waiting for dungeon entry";
         int runs = queue.Sum(e => e.Runs);
         Plugin.Log.Information($"Session started: {runs} run(s), rotation {rotation}");
         this.chat.Print($"[Crucible SUX] Session started: {runs} run(s). \"/sux stop\" stops it.");
@@ -148,6 +160,8 @@ public sealed class SessionRunner : IDisposable
         if (this.Current is not { } o)
             return;
         this.Execute(o, o.Cancel(DateTime.UtcNow, reason), DateTime.UtcNow);
+        this.boardRotationRecovery.Reset();
+        this.RotationStatus = "Stopped";
         this.Settle(o);
     }
 
@@ -164,6 +178,8 @@ public sealed class SessionRunner : IDisposable
         if (this.Observe(now) is not { } observation)
             return;
         this.Execute(o, o.Tick(observation), now);
+        if (this.MonitorBoardRotation(o, observation, now))
+            return;
         this.Settle(o);
     }
 
@@ -205,6 +221,70 @@ public sealed class SessionRunner : IDisposable
             this.gameGui.GetAddonByName(ResultAddon).IsVisible,
             activity,
             snapshot.ClearedBoards);
+    }
+
+    /// <summary>
+    /// Verify the dungeon rotation independently of AutoDuty's accepted Run IPC. The initial
+    /// handshake is delayed until the character has entered a live board, and the identical
+    /// AutoDuty RSR mode is then asserted once; later dropouts get bounded retries.
+    /// </summary>
+    private bool MonitorBoardRotation(Orchestrator o, Observation observation, DateTime now)
+    {
+        bool owned = o.Phase == SessionPhase.InBoard && observation.ExecutorRunning
+            && !observation.ResultShown && o.Board?.Territory == observation.Territory
+            && string.Equals(this.rotationPlugin, "RotationSolverReborn", StringComparison.Ordinal);
+        bool ready = this.player.IsLoaded && !this.condition[ConditionFlag.OccupiedInCutSceneEvent];
+        bool? active = owned ? this.boardRotationIpc.Active() : null;
+        var action = this.boardRotationRecovery.Tick(now, owned, ready, active);
+
+        if (!owned)
+        {
+            this.boardRotationNoted = false;
+            this.lastBoardRotationActive = null;
+            this.RotationStatus = this.rotationPlugin == "RotationSolverReborn"
+                ? "Waiting for dungeon entry" : "Managed by AutoDuty";
+            return false;
+        }
+
+        if (!this.boardRotationNoted)
+        {
+            this.boardRotationNoted = true;
+            Plugin.Trace("Board RSR handoff: inside Crucible, AutoDuty running; " +
+                         "verifying and asserting AutoDuty mode after the startup grace.");
+        }
+
+        if (active != this.lastBoardRotationActive)
+        {
+            Plugin.Trace(active == true ? "Board RSR: autorotation active."
+                : active == false ? "Board RSR: autorotation inactive."
+                : "Board RSR: activation state unavailable.", important: active != true);
+            this.lastBoardRotationActive = active;
+        }
+        this.RotationStatus = active switch
+        {
+            true => "RSR active (AutoDuty mode asserted at entry)",
+            false => "RSR inactive; recovery monitor running",
+            _ => "RSR did not answer; recovery monitor running",
+        };
+
+        if (action == BoardRotationAction.Exhausted)
+        {
+            const string reason = "RSR did not activate after 3 AutoDuty-mode requests; " +
+                                  "stopping the board rather than proceeding without combat rotation.";
+            Plugin.Trace($"Board RSR handoff failed: {reason}", important: true);
+            this.Stop(reason);
+            return true;
+        }
+
+        if (action is BoardRotationAction.EnsureAutoDutyMode or BoardRotationAction.RetryAutoDutyMode)
+        {
+            bool sent = this.boardRotationIpc.ActivateAutoDutyMode(out string detail);
+            this.RotationStatus = sent ? "AutoDuty mode requested; checking activation"
+                : "AutoDuty mode request failed; retry scheduled";
+            Plugin.Trace($"Board RSR handoff ({action}, attempt " +
+                         $"{this.boardRotationRecovery.Attempts}/3): {detail}", important: !sent);
+        }
+        return false;
     }
 
     private static bool IsBoard(int number) => Boards.All.Any(b => b.Number == number);

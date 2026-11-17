@@ -1,28 +1,37 @@
-# Crucible SUX Leveler v0.3.28 — original dashboard UI
+# Crucible SUX Leveler v0.3.30 — RSR dungeon handoff recovery
 
-This corrective ZIP contains **complete replacement source files**, not patches. It fixes GitHub Actions `CS0103` caused by the new UI using the wrong `ImGui.BeginChild` overload. It is designed to overlay the **v0.3.27** source in `pistolero-git/CrucibleSux` and preserves existing plugin behavior.
+This release restores and verifies the Rotation Solver Reborn (RSR) handoff during AutoDuty-controlled Crucible boards. It preserves the v0.3.28 dashboard, Bestiary rank scan, dungeon roster, and carry leveling.
 
-## Changes
+**The failed v0.3.29 GitHub Actions run did not compile:** its tag pointed to the v0.3.28 commit. Do not retag v0.3.29. Use the new v0.3.30 tag instead.
 
-- A polished two-column interface with sidebar navigation instead of 12 scrolling horizontal tabs.
-- A dashboard with character level, collection, verified beast ranks, planned boards and quick navigation.
-- Separate Operations, Beasts, Activity and System navigation categories.
-- Retains all existing pages, settings, scanning controls, run controls, journey, Dungeon roster, Team planning and logs.
-- Displays the installed assembly version automatically in the sidebar.
-- Pure ImGui/Dalamud UI; no Glasswork dependency and no copied AGPL sources or assets.
+## Install, verify, and publish
 
-## Installation
+Extract `CrucibleSux_Leveler_v0.3.30_RSR_Recovery_FixedRelease.zip` into `~/Downloads`, then:
 
 ```bash
 cd ~/Documents/git/CrucibleSux
-git pull --rebase origin main
-unzip -o ~/Downloads/CrucibleSux_Leveler_v0.3.28_UI_DropIn.zip
-dotnet build CrucibleSux/CrucibleSux.csproj -c Release
-dotnet test --project CrucibleSux.Tests -c Release
-git diff --check
-git status
+# Only when local and remote have diverged, reconcile first:
+git pull --rebase --autostash origin main
+python3 ~/Downloads/CrucibleSux_v0.3.30_RSR_Recovery/apply_v0_3_30.py --check
+python3 ~/Downloads/CrucibleSux_v0.3.30_RSR_Recovery/apply_v0_3_30.py --apply
+python3 ~/Downloads/CrucibleSux_v0.3.30_RSR_Recovery/apply_v0_3_30.py --verify
 ```
 
-Commit and push when the build and tests pass. Create and push the tag `v0.3.28` only after verifying the UI in Dalamud. Release Actions will update `pluginmaster.json` after publishing a package.
+Then **use the included** `publish_v0_3_30.sh` to validate/build/test, stage all ten exact source/document paths, verify the staging area, commit, push to `main`, confirm remote SHA, and only then push tag `v0.3.30`. Alternatively follow the explicit steps in the ZIP README.
 
-**Not included**: a fix for the AutoDuty boss-encounter standstill. The earlier boss issue remains separate from this UI redesign.
+## Files changed
+
+- `CrucibleSux/Automation/SessionRunner.cs`
+- `CrucibleSux/Integrations/RotationSolverIpc.cs`
+- `CrucibleSux/Plugin.cs`
+- `CrucibleSux/Ui/SessionTabs.cs`
+- `CrucibleSux/CrucibleSux.csproj`
+- `FORK_CHANGELOG.md`
+- `FORK_INSTALL.md`
+- `CrucibleSux.Core/BoardRotationRecovery.cs` (new)
+- `CrucibleSux/Integrations/BoardRotationIpc.cs` (new)
+- `CrucibleSux.Tests/BoardRotationRecoveryTests.cs` (new)
+
+## Limitations
+
+Testing is still required against the current Dalamud SDK and in-game. The check and installer verify structure, not compiled execution. Do not modify `pluginmaster.json` by hand; GitHub Actions updates it after a successful tagged release.

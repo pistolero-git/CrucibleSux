@@ -2,6 +2,22 @@
 
 The upstream project's earlier release history remains in `CHANGELOG.md`. The fork tracks its own version numbers here.
 
+## [0.3.30] - 2026-11-16
+
+### Fixed
+
+- Detect and recover Rotation Solver Reborn not activating when AutoDuty begins a Crucible board. After board entry and a six-second startup grace, assert RSR's **AutoDuty** mode with the same targeting and IPC overrides as AutoDuty.
+- Monitor RSR's activation with bounded retries and report a clear failure after three unsuccessful requests instead of silently leaving the character unable to attack.
+- Prevent journey-side rotation cleanup and leveling mode changes from switching off RSR while AutoDuty owns an active board.
+
+### Added
+
+- Dungeon rotation handoff state in the Run page, diagnostic events, and isolated regression tests.
+
+### Release note
+
+- The `v0.3.29` tag was accidentally pushed at the v0.3.28 manifest commit before the v0.3.29 changes reached GitHub. It failed version validation before compilation. The same correction is released as **v0.3.30**, leaving the old tag untouched.
+
 ## [0.3.28] - 2026-11-16
 
 ### Fixed

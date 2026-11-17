@@ -13,7 +13,7 @@ namespace CrucibleSux.Integrations;
 /// Manual mode requires a target BEFORE the mode change; a mob approached by vnavmesh
 /// otherwise leaves RSR on with nothing to attack.
 /// </summary>
-public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log, Action<string, bool> note)
+public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log, Action<string, bool> note, Func<bool>? boardOwnsRotation = null)
 {
     private static readonly TimeSpan ResendAfter = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan CheckEvery = TimeSpan.FromSeconds(1);
@@ -49,6 +49,11 @@ public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log
 
     public bool Set(Mode mode, bool targetFreely = false)
     {
+        // A managed board owns RSR, including during journey stop/cleanup.
+        // Never overwrite AutoDuty mode with Off, Manual, or journey Auto.
+        if (!CrucibleSux.Core.BoardRotationRecovery.JourneyMayChangeRotation(boardOwnsRotation?.Invoke() == true))
+            return false;
+
         var now = DateTime.UtcNow;
         this.Requested = mode;
         if (now < this.failedUntil)
@@ -172,6 +177,9 @@ public sealed class RotationSolverIpc(IDalamudPluginInterface pi, IPluginLog log
 
     public void ForceOff()
     {
+        if (!CrucibleSux.Core.BoardRotationRecovery.JourneyMayChangeRotation(boardOwnsRotation?.Invoke() == true))
+            return;
+
         this.current = null;
         this.freely = null;
         this.failedUntil = default;

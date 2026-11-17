@@ -78,7 +78,10 @@ public sealed class Plugin : IDalamudPlugin
             ClientState, Condition, ObjectTable, GameGui, PlayerState, ChatGui, NotificationManager);
         var game = new GameActions(ObjectTable, Condition, GameGui, PlayerState);
         var nav = new NavmeshIpc(PluginInterface, Log);
-        var rotation = new RotationSolverIpc(PluginInterface, Log, (text, warn) => this.recorder!.Note(warn ? LogKind.Warn : LogKind.Info, text));
+        var rotation = new RotationSolverIpc(PluginInterface, Log,
+            (text, warn) => this.recorder!.Note(warn ? LogKind.Warn : LogKind.Info, text),
+            () => this.runner.Current is not null ||
+                  (Boards.ByTerritory(ClientState.TerritoryType) is not null && this.autoDuty.IsRunning() == true));
         this.journey = new ProgressionRunner(new ProgressionReader(PlayerState, DataManager), game, new Travel(game, nav, ClientState, DataManager),
             new Dialogue(game), nav, rotation, this.runner, this.config, PluginInterface, ClientState, FateTable,
             ObjectTable, DataManager, ChatGui, NotificationManager);

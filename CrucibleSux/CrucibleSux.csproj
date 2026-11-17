@@ -1,8 +1,8 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.3.28.0</Version>
+    <Version>0.3.30.0</Version>
     <AssemblyName>CrucibleSuxLeveler</AssemblyName>
-    <FileVersion>0.3.28.0</FileVersion>
+    <FileVersion>0.3.30.0</FileVersion>
     <Author>Michiru Tsukikage; pistolero-git (fork)</Author>
     <Name>Crucible SUX Leveler</Name>
     <Punchline>Crucible SUX fork with beast carry-leveling and direct rank/EXP tracking.</Punchline>
