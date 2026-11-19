@@ -100,6 +100,7 @@ public sealed class SessionTabs(SessionRunner runner, ProgressionRunner journey,
         var now = DateTime.UtcNow;
         ImGui.TextColored(ImGuiColors.HealerGreen, o.Status);
         ImGui.TextDisabled($"Rotation: {runner.RotationStatus}");
+        ImGui.TextDisabled($"Combat: {runner.CombatStatus}");
         if (o.Board is { } board)
         {
             ImGui.TextUnformatted($"Queue line {o.EntryIndex + 1} of {o.Queue.Count}: {board.Name}, run {o.RunNumber} of {o.Queue[o.EntryIndex].Runs}" +

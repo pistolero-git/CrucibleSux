@@ -2,6 +2,19 @@
 
 The upstream project's earlier release history remains in `CHANGELOG.md`. The fork tracks its own version numbers here.
 
+## [0.3.32] - 2026-11-18
+
+### Fixed
+
+- Added a board-only combat readiness controller. After entering a live Crucible board, Leveler attempts to summon the first assigned Battlehorn beast if none is present, with bounded retry intervals and explicit errors for missing/unavailable horns.
+- If AutoDuty moves into melee reach but the boss is still idle, Leveler can target a nearby hostile and enable the game's auto-attack after a stable three-second window. AutoDuty continues to own movement and RSR owns skill rotations.
+- Added state visibility for familiar/engagement handoff in the Run screen and detailed attempt logging. Timeouts stop the run instead of leaving the character standing indefinitely.
+- Added unit tests for board ownership, cutscenes, horns, combat initiation and reset behavior.
+
+### Validation
+
+- Designed for v0.3.31. Requires .NET build/test and live game validation before publishing. No external plugin sources modified.
+
 ## [0.3.31] - 2026-11-16
 
 ### Fixed

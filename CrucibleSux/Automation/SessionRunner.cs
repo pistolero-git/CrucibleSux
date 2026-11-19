@@ -5,6 +5,7 @@ using System.Numerics;
 using CrucibleSux.Core;
 using CrucibleSux.Integrations;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Services;
 
@@ -32,6 +33,8 @@ public sealed class SessionRunner : IDisposable
     private readonly BossModIpc bossMod;
     private readonly BoardRotationIpc boardRotationIpc;
     private readonly BoardRotationRecovery boardRotationRecovery = new();
+    private readonly BoardCombatRecovery boardCombatRecovery = new();
+    private readonly GameActions boardCombatGame;
     private readonly Configuration config;
     private readonly Action save;
     private readonly IClientState clientState;
@@ -69,6 +72,7 @@ public sealed class SessionRunner : IDisposable
         this.session = session;
         this.autoDuty = autoDuty;
         this.bossMod = bossMod;
+        this.boardCombatGame = new GameActions(objects, condition, gameGui, player);
         this.boardRotationIpc = new BoardRotationIpc(Plugin.PluginInterface, Plugin.Log);
         this.config = config;
         this.save = save;
@@ -92,6 +96,7 @@ public sealed class SessionRunner : IDisposable
 
     /// <summary>Live handoff status shown in the board runner.</summary>
     public string RotationStatus { get; private set; } = "Waiting for dungeon entry";
+    public string CombatStatus { get; private set; } = "Waiting for dungeon entry";
 
     public void Dispose()
     {
@@ -146,6 +151,8 @@ public sealed class SessionRunner : IDisposable
         this.saved = 0;
         this.LastReport = null;
         this.boardRotationRecovery.Reset();
+        this.boardCombatRecovery.Reset();
+        this.CombatStatus = "Waiting for dungeon entry";
         this.boardRotationNoted = false;
         this.lastBoardRotationActive = null;
         this.RotationStatus = "Waiting for dungeon entry";
@@ -161,7 +168,9 @@ public sealed class SessionRunner : IDisposable
             return;
         this.Execute(o, o.Cancel(DateTime.UtcNow, reason), DateTime.UtcNow);
         this.boardRotationRecovery.Reset();
+        this.boardCombatRecovery.Reset();
         this.RotationStatus = "Stopped";
+        this.CombatStatus = "Stopped";
         this.Settle(o);
     }
 
@@ -179,6 +188,8 @@ public sealed class SessionRunner : IDisposable
             return;
         this.Execute(o, o.Tick(observation), now);
         if (this.MonitorBoardRotation(o, observation, now))
+            return;
+        if (this.MonitorBoardCombat(o, observation, now))
             return;
         this.Settle(o);
     }
@@ -285,6 +296,104 @@ public sealed class SessionRunner : IDisposable
                          $"{this.boardRotationRecovery.Attempts}/3): {detail}", important: !sent);
         }
         return false;
+    }
+
+    /// <summary>
+    /// Supply the two missing transitions that AutoDuty does not guarantee:
+    /// a familiar before the first fight, and a single auto-attack when AutoDuty
+    /// reaches a target without pulling it. Never steer the character or change RSR mode.
+    /// </summary>
+    private bool MonitorBoardCombat(Orchestrator o, Observation observation, DateTime now)
+    {
+        bool owned = o.Phase == SessionPhase.InBoard && observation.ExecutorRunning
+            && !observation.ResultShown && o.Board?.Territory == observation.Territory
+            && string.Equals(this.rotationPlugin, "RotationSolverReborn", StringComparison.Ordinal);
+        if (!owned)
+        {
+            this.boardCombatRecovery.Reset();
+            this.CombatStatus = "Waiting for dungeon entry";
+            return false;
+        }
+
+        try
+        {
+            bool ready = this.player.IsLoaded && this.player.ClassJob.RowId == CrucibleIds.BeastmasterJob
+                && this.objects.LocalPlayer is not null && !this.boardCombatGame.IsBusy;
+            bool fighting = this.condition[ConditionFlag.InCombat];
+            bool familiar = ready && this.boardCombatGame.SummonedBeast() != 0;
+            uint? first = ready ? this.boardCombatGame.FirstHornBeast() : null;
+            int hornSlot = first is uint number ? this.boardCombatGame.HornOf(number) : -1;
+            bool usable = hornSlot >= 0 && this.boardCombatGame.CanUse(GameActions.Battlehorns[hornSlot]);
+
+            // AutoDuty does not expose its active boss-step via IPC. A hostile within
+            // melee reach, continuously for 3 s, is the narrowest safe fallback.
+            IBattleNpc? nearby = null;
+            if (ready && !fighting && familiar && this.objects.LocalPlayer is { } me)
+            {
+                nearby = this.objects.OfType<IBattleNpc>()
+                    .Where(n => n.IsTargetable && !n.IsDead && n.CurrentHp > 0
+                        && GameActions.IsHostile(n) && !GameActions.IsTrainingDummy(n)
+                        && Vector3.Distance(n.Position, me.Position) - n.HitboxRadius <= 3.2f)
+                    .OrderBy(n => Vector3.Distance(n.Position, me.Position) - n.HitboxRadius)
+                    .FirstOrDefault();
+            }
+
+            bool rotationActive = this.boardRotationIpc.Active() == true;
+            var action = this.boardCombatRecovery.Tick(now, owned, ready, fighting, familiar,
+                hornSlot >= 0, usable, nearby is not null, rotationActive,
+                this.boardCombatGame.IsAutoAttacking);
+
+            if (fighting)
+                this.CombatStatus = "In combat; AutoDuty/RSR control the encounter";
+            else if (familiar)
+                this.CombatStatus = nearby is null ? "Familiar active; following AutoDuty"
+                    : rotationActive ? "Familiar active; watching first attack"
+                    : "Familiar active; waiting for RSR";
+            else
+                this.CombatStatus = hornSlot < 0 ? "No beast assigned to a Battlehorn"
+                    : usable ? "Calling the first Battlehorn familiar" : "Waiting for Battlehorn to become usable";
+
+            switch (action)
+            {
+                case BoardCombatAction.SummonFirstHorn:
+                    bool accepted = this.boardCombatGame.UseAction(GameActions.Battlehorns[hornSlot]);
+                    Plugin.Trace($"Board combat: first Battlehorn summon attempt " +
+                                 $"{this.boardCombatRecovery.SummonAttempts}/{BoardCombatRecovery.MaxSummonAttempts}, " +
+                                 $"beast {first}, slot {hornSlot + 1}, accepted={accepted}", important: !accepted);
+                    this.CombatStatus = accepted ? "Battlehorn called; verifying familiar" : "Battlehorn rejected; retry scheduled";
+                    break;
+                case BoardCombatAction.EngageNearbyHostile:
+                    // The game's general auto-attack is a TOGGLE; GameActions checks the
+                    // current attack state so subsequent ticks cannot turn it back off.
+                    this.boardCombatGame.EnsureAutoAttack(nearby!);
+                    Plugin.Trace($"Board combat: attempting to pull {nearby!.Name.TextValue} " +
+                                 $"(attempt {this.boardCombatRecovery.EngageAttempts}/" +
+                                 $"{BoardCombatRecovery.MaxEngageAttempts}); AutoDuty retains movement and RSR retains skills");
+                    this.CombatStatus = $"Trying initial attack on {nearby.Name.TextValue}";
+                    break;
+                case BoardCombatAction.NoBattlehorn:
+                    return this.StopFailedBoard("No beast is assigned to a usable Battlehorn. Assign one before running the board.");
+                case BoardCombatAction.HornUnavailable:
+                    return this.StopFailedBoard("The assigned Battlehorn was unusable for 30 seconds; check its cooldown and assigned beast.");
+                case BoardCombatAction.SummonFailed:
+                    return this.StopFailedBoard("Three attempts did not produce a detectable familiar. Check the board combat log and Battlehorn assignments.");
+                case BoardCombatAction.EngagementStalled:
+                    return this.StopFailedBoard("A target was in melee range but combat did not start after three attempts. Check auto-attack and the boss target.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Board combat familiar/engagement recovery failed");
+            return this.StopFailedBoard($"Board combat recovery errored: {ex.GetType().Name}");
+        }
+        return false;
+    }
+
+    private bool StopFailedBoard(string reason)
+    {
+        Plugin.Trace($"Board combat handoff failed: {reason}", important: true);
+        this.Stop(reason);
+        return true;
     }
 
     private static bool IsBoard(int number) => Boards.All.Any(b => b.Number == number);
