@@ -2,6 +2,22 @@
 
 The upstream project's earlier release history remains in `CHANGELOG.md`. The fork tracks its own version numbers here.
 
+## [0.3.33] - 2026-11-18
+
+### Fixed
+
+- Do not treat AutoDuty's pre-navigation entry state as an active, ready combat path.
+  Read `AutoDuty.IsNavigating` before inspecting Battlehorn assignments.
+- Delay a missing-horn failure for 45 seconds after active navigation and the player's ready state;
+  previously, the new v0.3.32 safeguard stopped AutoDuty immediately despite a valid registered team.
+- Reset the missing-assignment clock if a horn becomes readable; use a separate cooldown grace.
+- Added tests for delayed horn initialization and long loading periods.
+
+### Notes
+
+- The existing v0.3.32 boss engagement fallback is retained. This fixes the premature board shutdown
+  shown in the November 18 log; actual game behavior must still be verified in Dalamud.
+
 ## [0.3.32] - 2026-11-18
 
 ### Fixed

@@ -19,6 +19,7 @@ public sealed class AutoDutyIpc
 {
     private readonly IPluginLog log;
     private readonly ICallGateSubscriber<bool> isStopped;
+    private readonly ICallGateSubscriber<bool> isNavigating;
     private readonly ICallGateSubscriber<uint, bool> contentHasPath;
     private readonly ICallGateSubscriber<object, bool> pushOverrides;
     private readonly ICallGateSubscriber<bool> popOverrides;
@@ -30,6 +31,7 @@ public sealed class AutoDutyIpc
     {
         this.log = log;
         this.isStopped = pluginInterface.GetIpcSubscriber<bool>("AutoDuty.IsStopped");
+        this.isNavigating = pluginInterface.GetIpcSubscriber<bool>("AutoDuty.IsNavigating");
         this.contentHasPath = pluginInterface.GetIpcSubscriber<uint, bool>("AutoDuty.ContentHasPath");
         this.pushOverrides = pluginInterface.GetIpcSubscriber<object, bool>("AutoDuty.PushConfigOverrides");
         this.popOverrides = pluginInterface.GetIpcSubscriber<bool>("AutoDuty.PopConfigOverrides");
@@ -66,6 +68,17 @@ public sealed class AutoDutyIpc
         }
         catch (Exception)
         {
+            return null;
+        }
+    }
+
+    /// <summary>True only after AutoDuty begins navigating the loaded duty path; null if its IPC fails.</summary>
+    public bool? IsNavigating()
+    {
+        try { return this.isNavigating.InvokeFunc(); }
+        catch (Exception ex)
+        {
+            this.log.Debug(ex, "AutoDuty.IsNavigating did not answer");
             return null;
         }
     }

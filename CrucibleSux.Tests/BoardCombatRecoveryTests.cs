@@ -19,7 +19,8 @@ public class BoardCombatRecoveryTests
         Assert.Equal(BoardCombatAction.None, this.Tick(0, owned: false));
         Assert.Equal(BoardCombatAction.None, this.Tick(1, ready: false));
         Assert.Equal(BoardCombatAction.None, this.Tick(7, ready: false));
-        Assert.Equal(BoardCombatAction.SummonFirstHorn, this.Tick(8));
+        Assert.Equal(BoardCombatAction.None, this.Tick(8));
+        Assert.Equal(BoardCombatAction.SummonFirstHorn, this.Tick(11));
     }
 
     [Fact]
@@ -39,12 +40,61 @@ public class BoardCombatRecoveryTests
     public void Requires_a_registered_usable_horn_and_handles_cooldown()
     {
         this.Tick(0);
-        Assert.Equal(BoardCombatAction.NoBattlehorn, this.Tick(3, horn: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(3, horn: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(47, horn: false));
+        Assert.Equal(BoardCombatAction.NoBattlehorn, this.Tick(48, horn: false));
         this.recovery.Reset();
         this.Tick(0);
         Assert.Equal(BoardCombatAction.None, this.Tick(3, usable: false));
         Assert.Equal(BoardCombatAction.None, this.Tick(32, usable: false));
         Assert.Equal(BoardCombatAction.HornUnavailable, this.Tick(33, usable: false));
+    }
+
+    [Fact]
+    public void A_team_loaded_before_the_horns_does_not_trigger_a_premature_abort()
+    {
+        this.Tick(0);
+        Assert.Equal(BoardCombatAction.None, this.Tick(3, horn: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(20, horn: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(40, horn: false));
+        // ActionManager finally exposes the assigned horn; the summon can proceed.
+        Assert.Equal(BoardCombatAction.SummonFirstHorn, this.Tick(41));
+    }
+
+    [Fact]
+    public void A_long_duty_loading_period_does_not_consume_the_assignment_grace()
+    {
+        this.Tick(0, ready: false, horn: false);
+        this.Tick(100, ready: false, horn: false);
+        Assert.Equal(BoardCombatAction.None, this.Tick(101, horn: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(105, horn: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(140, horn: false));
+        Assert.Equal(BoardCombatAction.SummonFirstHorn, this.Tick(141));
+    }
+
+    [Fact]
+    public void Missing_assignment_does_not_consume_the_horn_cooldown_window()
+    {
+        this.Tick(0);
+        Assert.Equal(BoardCombatAction.None, this.Tick(3, horn: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(40, horn: false));
+        // A horn finally appears but remains unusable: start a fresh 30-second clock.
+        Assert.Equal(BoardCombatAction.None, this.Tick(41, usable: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(70, usable: false));
+        Assert.Equal(BoardCombatAction.HornUnavailable, this.Tick(71, usable: false));
+    }
+
+    [Fact]
+    public void Usable_horn_resets_a_previous_cooldown_window()
+    {
+        this.Tick(0);
+        Assert.Equal(BoardCombatAction.None, this.Tick(3, usable: false));
+        // A usable horn clears the prior cooldown deadline even if the summoned
+        // familiar has not yet appeared; a later cooldown gets a full 30 seconds.
+        Assert.Equal(BoardCombatAction.SummonFirstHorn, this.Tick(10, usable: true));
+        Assert.Equal(BoardCombatAction.None, this.Tick(11, usable: false));
+        Assert.Equal(BoardCombatAction.None, this.Tick(40, usable: false));
+        Assert.Equal(BoardCombatAction.HornUnavailable, this.Tick(41, usable: false));
     }
 
     [Fact]

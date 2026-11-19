@@ -21,6 +21,7 @@ public enum BoardCombatAction
 public sealed class BoardCombatRecovery
 {
     public static readonly TimeSpan EntryGrace = TimeSpan.FromSeconds(3);
+    public static readonly TimeSpan AssignmentGrace = TimeSpan.FromSeconds(45);
     public static readonly TimeSpan SummonRetry = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan HornCooldownLimit = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan NearbyDwell = TimeSpan.FromSeconds(3);
@@ -31,7 +32,9 @@ public sealed class BoardCombatRecovery
 
     private DateTime? enteredAt;
     private DateTime nextSummon;
-    private DateTime? unableToSummonSince;
+    // Missing assignments and assigned-but-unusable actions have independent timeouts.
+    private DateTime? missingAssignmentSince;
+    private DateTime? unusableHornSince;
     private DateTime? nearbySince;
     private DateTime nextEngage;
     private bool completed;
@@ -43,7 +46,8 @@ public sealed class BoardCombatRecovery
     {
         this.enteredAt = null;
         this.nextSummon = default;
-        this.unableToSummonSince = null;
+        this.missingAssignmentSince = null;
+        this.unusableHornSince = null;
         this.nearbySince = null;
         this.nextEngage = default;
         this.SummonAttempts = 0;
@@ -62,9 +66,11 @@ public sealed class BoardCombatRecovery
             return BoardCombatAction.None;
         }
 
-        this.enteredAt ??= now;
+        // Instance entry can precede Nav_IsReady and duty initialization by several seconds.
+        // Start all recovery clocks only once the player and navigator are ready.
         if (!playerReady || this.completed)
             return BoardCombatAction.None;
+        this.enteredAt ??= now;
 
         if (inCombat)
         {
@@ -83,20 +89,32 @@ public sealed class BoardCombatRecovery
                 return BoardCombatAction.None;
             if (!hornAssigned)
             {
-                this.completed = true;
-                return BoardCombatAction.NoBattlehorn;
+                // A registered team does not mean the horn table is ready. Only the
+                // missing-assignment clock runs in this state.
+                this.unusableHornSince = null;
+                this.missingAssignmentSince ??= now;
+                if (now - this.missingAssignmentSince >= AssignmentGrace)
+                {
+                    this.completed = true;
+                    return BoardCombatAction.NoBattlehorn;
+                }
+                return BoardCombatAction.None;
             }
+
+            // Transition to an assigned horn once; the previous 45-second clock
+            // must not carry over, and this 30-second clock must not refresh per tick.
+            this.missingAssignmentSince = null;
             if (!hornUsable)
             {
-                this.unableToSummonSince ??= now;
-                if (now - this.unableToSummonSince >= HornCooldownLimit)
+                this.unusableHornSince ??= now;
+                if (now - this.unusableHornSince >= HornCooldownLimit)
                 {
                     this.completed = true;
                     return BoardCombatAction.HornUnavailable;
                 }
                 return BoardCombatAction.None;
             }
-            this.unableToSummonSince = null;
+            this.unusableHornSince = null;
             if (now < this.nextSummon)
                 return BoardCombatAction.None;
             if (this.SummonAttempts >= MaxSummonAttempts)
@@ -110,7 +128,8 @@ public sealed class BoardCombatRecovery
         }
 
         this.SummonAttempts = 0;
-        this.unableToSummonSince = null;
+        this.missingAssignmentSince = null;
+        this.unusableHornSince = null;
         if (!hostileInMeleeRange || !rotationActive)
         {
             this.nearbySince = null;

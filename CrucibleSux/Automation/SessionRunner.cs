@@ -305,13 +305,17 @@ public sealed class SessionRunner : IDisposable
     /// </summary>
     private bool MonitorBoardCombat(Orchestrator o, Observation observation, DateTime now)
     {
-        bool owned = o.Phase == SessionPhase.InBoard && observation.ExecutorRunning
+        bool insideBoard = o.Phase == SessionPhase.InBoard && observation.ExecutorRunning
             && !observation.ResultShown && o.Board?.Territory == observation.Territory
             && string.Equals(this.rotationPlugin, "RotationSolverReborn", StringComparison.Ordinal);
+        // IsStopped()==false means AutoDuty may only be waiting for DutyStarted/Nav_IsReady.
+        // Do not inspect ActionManager.BeastmasterPets before the path navigator actually starts.
+        bool owned = insideBoard && this.autoDuty.IsNavigating() == true;
         if (!owned)
         {
             this.boardCombatRecovery.Reset();
-            this.CombatStatus = "Waiting for dungeon entry";
+            this.CombatStatus = insideBoard ? "Inside board; waiting for AutoDuty navigation"
+                : "Waiting for dungeon entry";
             return false;
         }
 
@@ -350,7 +354,7 @@ public sealed class SessionRunner : IDisposable
                     : rotationActive ? "Familiar active; watching first attack"
                     : "Familiar active; waiting for RSR";
             else
-                this.CombatStatus = hornSlot < 0 ? "No beast assigned to a Battlehorn"
+                this.CombatStatus = hornSlot < 0 ? "Waiting for Battlehorn assignments to load"
                     : usable ? "Calling the first Battlehorn familiar" : "Waiting for Battlehorn to become usable";
 
             switch (action)
@@ -372,7 +376,7 @@ public sealed class SessionRunner : IDisposable
                     this.CombatStatus = $"Trying initial attack on {nearby.Name.TextValue}";
                     break;
                 case BoardCombatAction.NoBattlehorn:
-                    return this.StopFailedBoard("No beast is assigned to a usable Battlehorn. Assign one before running the board.");
+                    return this.StopFailedBoard("No Battlehorn assignment became readable after 45 seconds of active dungeon navigation. Check the in-game Battlehorn configuration and AutoDuty logs.");
                 case BoardCombatAction.HornUnavailable:
                     return this.StopFailedBoard("The assigned Battlehorn was unusable for 30 seconds; check its cooldown and assigned beast.");
                 case BoardCombatAction.SummonFailed:
