@@ -12,3 +12,6 @@ TestResults/
 
 # Raw sheet dumps hold Square Enix game text: keep them local (docs/data/xbm-columns.md is the committed summary).
 docs/data/dumps/
+
+# Local installer backups
+.cruciblesux-backups/
